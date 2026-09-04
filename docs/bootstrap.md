@@ -1,0 +1,48 @@
+# Bootstrap local
+
+O `README.md` da raiz permanece a especificação oficial. Este arquivo documenta
+somente a execução da infraestrutura criada na Etapa 1.
+
+## Pré-requisitos
+
+- Bun 1.x;
+- Docker com Docker Compose v2.
+
+## Aplicação no host
+
+1. Copie `.env.example` para `.env`.
+2. Execute `bun install`.
+3. Suba PostgreSQL e LocalStack com
+   `docker compose up -d postgres localstack`.
+4. Consulte migrations com `bun run migration:status`.
+5. Inicie a aplicação com `bun run start:dev`.
+
+`GET /health/live` verifica apenas que o processo responde. `GET /health/ready`
+executa uma consulta real no PostgreSQL e lê atributos da fila SQS principal.
+
+## Ambiente completo em containers
+
+Execute `docker compose up --build`. O serviço da aplicação aguarda os
+healthchecks de PostgreSQL e LocalStack antes de iniciar.
+
+O hook de inicialização do LocalStack cria, de forma idempotente:
+
+- `wager-transactions.fifo` com redrive após 5 recebimentos;
+- `wager-transactions-dlq.fifo`;
+- o tópico `wager-integration-events`;
+- a fila standard `wager-integration-events-audit`, sua policy e a inscrição no
+  tópico com raw message delivery.
+
+Não existe migration bootstrap nesta etapa porque ainda não há tabelas de
+domínio. O diretório de migrations será criado pelo primeiro
+`bun run migration:create` que tiver uma alteração real de schema.
+
+## Testes
+
+- `bun run test` ou `bun run test:unit`: testes rápidos da fundação;
+- `bun run test:integration`: testes de infraestrutura, ignorados por padrão;
+- `RUN_INTEGRATION_TESTS=true bun run test:integration`: usa PostgreSQL e
+  LocalStack reais configurados no ambiente;
+- `bun run test:concurrency`: reservado às etapas financeiras e retorna sucesso
+  enquanto não houver testes nessa categoria;
+- `bun run test:all`: executa toda a suíte descoberta pelo Bun Test.
