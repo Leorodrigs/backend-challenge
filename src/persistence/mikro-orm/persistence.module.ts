@@ -8,6 +8,9 @@ import {
   type ApplicationConfiguration,
 } from '../../config/application.config.js';
 import { createMikroOrmOptions } from './mikro-orm.options.js';
+import { MikroOrmWagerTransactionRepository } from './repositories/mikro-orm-wager-transaction.repository.js';
+import { MikroOrmWalletLedgerEntryRepository } from './repositories/mikro-orm-wallet-ledger-entry.repository.js';
+import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.repository.js';
 
 @Module({
   imports: [
@@ -18,6 +21,16 @@ import { createMikroOrmOptions } from './mikro-orm.options.js';
       useFactory: (configuration: ApplicationConfiguration) =>
         createMikroOrmOptions(configuration),
     }),
+  ],
+  providers: [
+    MikroOrmWalletRepository,
+    MikroOrmWagerTransactionRepository,
+    MikroOrmWalletLedgerEntryRepository,
+  ],
+  exports: [
+    MikroOrmWalletRepository,
+    MikroOrmWagerTransactionRepository,
+    MikroOrmWalletLedgerEntryRepository,
   ],
 })
 export class PersistenceModule {}

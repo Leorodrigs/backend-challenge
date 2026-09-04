@@ -33,16 +33,19 @@ O hook de inicialização do LocalStack cria, de forma idempotente:
 - a fila standard `wager-integration-events-audit`, sua policy e a inscrição no
   tópico com raw message delivery.
 
-Não existe migration bootstrap nesta etapa porque ainda não há tabelas de
-domínio. O diretório de migrations será criado pelo primeiro
-`bun run migration:create` que tiver uma alteração real de schema.
+A migration da Etapa 3 cria `wallets`, `wager_transactions` e
+`wallet_ledger_entries`, incluindo as constraints financeiras e a proteção de
+imutabilidade do ledger. Execute-a com `bun run migration:up` e consulte seu
+estado com `bun run migration:status`.
 
 ## Testes
 
 - `bun run test` ou `bun run test:unit`: testes rápidos da fundação;
-- `bun run test:integration`: testes de infraestrutura, ignorados por padrão;
+- `bun run test:integration`: testes de integração, ignorados por padrão;
 - `RUN_INTEGRATION_TESTS=true bun run test:integration`: usa PostgreSQL e
-  LocalStack reais configurados no ambiente;
+  LocalStack reais configurados no ambiente. Os testes financeiros criam e
+  removem um banco PostgreSQL descartável, portanto o usuário configurado
+  precisa de permissão para `CREATE DATABASE`;
 - `bun run test:concurrency`: reservado às etapas financeiras e retorna sucesso
   enquanto não houver testes nessa categoria;
 - `bun run test:all`: executa toda a suíte descoberta pelo Bun Test.
