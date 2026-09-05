@@ -10,6 +10,7 @@ import { HealthModule } from './health/health.module.js';
 import { AwsModule } from './messaging/aws/aws.module.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 import { PersistenceModule } from './persistence/mikro-orm/persistence.module.js';
+import { WageringModule } from './wagering/wagering.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { PersistenceModule } from './persistence/mikro-orm/persistence.module.js
     ObservabilityModule,
     ScheduleModule.forRoot(),
     PersistenceModule,
+    WageringModule,
     AwsModule,
     HealthModule,
   ],

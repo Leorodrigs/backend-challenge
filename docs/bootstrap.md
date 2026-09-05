@@ -46,6 +46,7 @@ estado com `bun run migration:status`.
   LocalStack reais configurados no ambiente. Os testes financeiros criam e
   removem um banco PostgreSQL descartável, portanto o usuário configurado
   precisa de permissão para `CREATE DATABASE`;
-- `bun run test:concurrency`: reservado às etapas financeiras e retorna sucesso
-  enquanto não houver testes nessa categoria;
+- `bun run test:concurrency`: concorrência financeira em PostgreSQL real,
+  habilitada também por `RUN_INTEGRATION_TESTS=true`. Usa bancos descartáveis
+  para provar disputa pela mesma wallet e locks independentes entre wallets;
 - `bun run test:all`: executa toda a suíte descoberta pelo Bun Test.

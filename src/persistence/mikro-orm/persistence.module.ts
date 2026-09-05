@@ -7,7 +7,9 @@ import {
   applicationConfiguration,
   type ApplicationConfiguration,
 } from '../../config/application.config.js';
+import { WagerProcessingPersistence } from '../../wagering/application/wager-processing.persistence.js';
 import { createMikroOrmOptions } from './mikro-orm.options.js';
+import { MikroOrmWagerProcessingPersistence } from './mikro-orm-wager-processing.persistence.js';
 import { MikroOrmWagerTransactionRepository } from './repositories/mikro-orm-wager-transaction.repository.js';
 import { MikroOrmWalletLedgerEntryRepository } from './repositories/mikro-orm-wallet-ledger-entry.repository.js';
 import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.repository.js';
@@ -23,11 +25,16 @@ import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.reposi
     }),
   ],
   providers: [
+    {
+      provide: WagerProcessingPersistence,
+      useClass: MikroOrmWagerProcessingPersistence,
+    },
     MikroOrmWalletRepository,
     MikroOrmWagerTransactionRepository,
     MikroOrmWalletLedgerEntryRepository,
   ],
   exports: [
+    WagerProcessingPersistence,
     MikroOrmWalletRepository,
     MikroOrmWagerTransactionRepository,
     MikroOrmWalletLedgerEntryRepository,
