@@ -130,7 +130,9 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('pessimistic wager
             },
             findByIdempotencyKey: (key) => context.transactions.findByIdempotencyKey(key),
             findByProviderAndExternalTransactionId: (provider, external) => context.transactions.findByProviderAndExternalTransactionId(provider, external),
-            saveFinalStateAndResult: (transaction, snapshot) => context.transactions.saveFinalStateAndResult(transaction, snapshot),
+            saveStateAndResult: (transaction, snapshot, retry) => context.transactions.saveStateAndResult(transaction, snapshot, retry),
+            hasProcessedReversal: (reference, kind) => context.transactions.hasProcessedReversal(reference, kind),
+            claimNextPendingReference: (now) => context.transactions.claimNextPendingReference(now),
           },
           wallets: {
             save: (value) => context.wallets.save(value),
@@ -264,7 +266,9 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('pessimistic wager
           },
           findByIdempotencyKey: (key) => context.transactions.findByIdempotencyKey(key),
           findByProviderAndExternalTransactionId: (provider, external) => context.transactions.findByProviderAndExternalTransactionId(provider, external),
-          saveFinalStateAndResult: (transaction, snapshot) => context.transactions.saveFinalStateAndResult(transaction, snapshot),
+          saveStateAndResult: (transaction, snapshot, retry) => context.transactions.saveStateAndResult(transaction, snapshot, retry),
+            hasProcessedReversal: (reference, kind) => context.transactions.hasProcessedReversal(reference, kind),
+            claimNextPendingReference: (now) => context.transactions.claimNextPendingReference(now),
         },
       })),
     };

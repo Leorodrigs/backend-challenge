@@ -1,6 +1,6 @@
 export class UnsupportedWagerTransactionKindError extends Error {
   constructor(public readonly kind: unknown) {
-    super('Only BET, WIN and LOSS are supported by this processing flow');
+    super('Only BET, WIN, LOSS, REFUND and ROLLBACK are supported by this processing flow');
     this.name = 'UnsupportedWagerTransactionKindError';
   }
 }

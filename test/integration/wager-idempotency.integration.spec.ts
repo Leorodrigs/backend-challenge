@@ -162,7 +162,9 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('persistent wager 
             },
             findByIdempotencyKey: (key) => context.transactions.findByIdempotencyKey(key),
             findByProviderAndExternalTransactionId: (provider, external) => context.transactions.findByProviderAndExternalTransactionId(provider, external),
-            saveFinalStateAndResult: (transaction, snapshot) => context.transactions.saveFinalStateAndResult(transaction, snapshot),
+            saveStateAndResult: (transaction, snapshot, retry) => context.transactions.saveStateAndResult(transaction, snapshot, retry),
+            hasProcessedReversal: (reference, kind) => context.transactions.hasProcessedReversal(reference, kind),
+            claimNextPendingReference: (now) => context.transactions.claimNextPendingReference(now),
           },
         });
         expect(result).toBeDefined();
@@ -211,7 +213,7 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('persistent wager 
       if (input.payload.kind === Kind.Loss) legacy.markProcessed(undefined, new Date());
       await repository.save(legacy);
     }
-    await database.orm.migrator.down();
+    await database.orm.migrator.down({ to: 'Migration20260904000100_require_processed_reference' });
     const columnsDown = await database.pool.query("select column_name from information_schema.columns where table_name = 'wager_transactions' and column_name like 'result_%'");
     expect(columnsDown.rows).toHaveLength(0);
     const oldFk = await database.pool.query<{ condeferrable: boolean }>("select condeferrable from pg_constraint where conname = 'wager_transactions_wallet_fk'");

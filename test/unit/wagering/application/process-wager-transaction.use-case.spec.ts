@@ -49,10 +49,12 @@ function setup(balance = '100.00') {
       save: mock(async (_wallet: Wallet): Promise<void> => {}),
     },
     transactions: {
+      hasProcessedReversal: mock(async (_reference: string, _kind: Kind) => false),
+      claimNextPendingReference: mock(async () => undefined),
       tryClaim: mock(async (_transaction: WagerTransaction) => true),
       findByIdempotencyKey: mock(async (_key: string): Promise<StoredWagerResult | undefined> => undefined),
       findByProviderAndExternalTransactionId: mock(async (_provider: string, _external: string): Promise<WagerTransaction | undefined> => undefined),
-      saveFinalStateAndResult: mock(async (_transaction: WagerTransaction, _snapshot: WagerResultSnapshot): Promise<void> => {}),
+      saveStateAndResult: mock(async (_transaction: WagerTransaction, _snapshot: WagerResultSnapshot): Promise<void> => {}),
     },
     ledger: {
       append: mock(async (_entry: WalletLedgerEntry): Promise<void> => {}),
@@ -92,13 +94,13 @@ describe('ProcessWagerTransactionUseCase', () => {
     });
     const before = wallet.balance;
     const result = await useCase.execute(withPayload(input, { kind }));
-    const transaction = context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0];
+    const transaction = context.transactions.saveStateAndResult.mock.calls[0]?.[0];
     const entry = context.ledger.append.mock.calls[0]?.[0];
 
     expect(context.wallets.findByIdForUpdate).toHaveBeenCalledWith(wallet.id);
     expect(movement).toHaveBeenCalledTimes(1);
     expect(context.wallets.save).toHaveBeenCalledWith(wallet);
-    expect(context.transactions.saveFinalStateAndResult).toHaveBeenCalledTimes(1);
+    expect(context.transactions.saveStateAndResult).toHaveBeenCalledTimes(1);
     expect(context.ledger.append).toHaveBeenCalledTimes(1);
     expect(result.status).toBe(Status.Processed);
     expect(transaction?.id).toBe(result.transactionId);
@@ -129,7 +131,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.balance.toJSON().amount).toBe('100.00');
     expect(result.walletVersion).toBe(1);
     expect(wallet.updatedAt).toEqual(openedAt);
-    expect(context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0].money).toBe(input.payload.money);
+    expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].money).toBe(input.payload.money);
     expectNoWalletWrites(context);
   });
 
@@ -142,8 +144,8 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.balance.toJSON().amount).toBe('20.00');
     expect(result.walletVersion).toBe(1);
     expect(wallet.updatedAt).toEqual(openedAt);
-    expect(context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0].status).toBe(Status.Rejected);
-    expect(context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0].processedAt).toBeUndefined();
+    expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].status).toBe(Status.Rejected);
+    expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].processedAt).toBeUndefined();
     expectNoWalletWrites(context);
   });
 
@@ -157,15 +159,15 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.balance.currency).toBe('BRL');
     expect(result.walletVersion).toBe(1);
     expect(wallet.updatedAt).toEqual(openedAt);
-    expect(context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0].failureCode).toBe(FailureCode.CurrencyMismatch);
+    expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].failureCode).toBe(FailureCode.CurrencyMismatch);
     expectNoWalletWrites(context);
   });
 
-  test.each([Kind.Opening, Kind.Refund, Kind.Rollback, 'UNKNOWN' as Kind])('rejects unsupported runtime kind %s before persistence', async (kind) => {
+  test.each([Kind.Opening, 'UNKNOWN' as Kind])('rejects unsupported runtime kind %s before persistence', async (kind) => {
     const { context, input, useCase } = setup();
     await expect(useCase.execute(withPayload(input, { kind }))).rejects.toBeInstanceOf(UnsupportedWagerTransactionKindError);
     expect(context.wallets.findByIdForUpdate).not.toHaveBeenCalled();
-    expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+    expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
     expectNoWalletWrites(context);
   });
 
@@ -173,7 +175,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     const { context, input, useCase } = setup();
     context.wallets.findByIdForUpdate.mockResolvedValue(undefined);
     await expect(useCase.execute(input)).rejects.toBeInstanceOf(WalletNotFoundError);
-    expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+    expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
     expectNoWalletWrites(context);
   });
 
@@ -182,7 +184,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     await expect(useCase.execute(withPayload(input, { kind, playerId: 'another-player' }))).rejects.toBeInstanceOf(WalletPlayerMismatchError);
     expect(wallet.balance.toJSON().amount).toBe('100.00');
     expect(wallet.version).toBe(1);
-    expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+    expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
     expectNoWalletWrites(context);
   });
 
@@ -194,14 +196,14 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.walletVersion).toBe(1);
     expect(result.ledgerEntryId).toBeUndefined();
     expect(wallet.updatedAt).toEqual(openedAt);
-    expect(context.transactions.saveFinalStateAndResult).toHaveBeenCalledTimes(1);
+    expect(context.transactions.saveStateAndResult).toHaveBeenCalledTimes(1);
     expectNoWalletWrites(context);
   });
 
   test('WIN preserves an optional external reference without resolving it', async () => {
     const { context, input, useCase } = setup();
     await useCase.execute(withPayload(input, { kind: Kind.Win, referenceExternalTransactionId: 'external-bet' }));
-    const transaction = context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0];
+    const transaction = context.transactions.saveStateAndResult.mock.calls[0]?.[0];
     expect(transaction?.status).toBe(Status.Processed);
     expect(transaction?.referenceExternalTransactionId).toBe('external-bet');
     expect(transaction?.referenceTransactionId).toBeUndefined();
@@ -211,7 +213,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     const { context, input, useCase } = setup();
     await expect(useCase.execute({ ...input, idempotencyKey: '' })).rejects.toBeInstanceOf(InvalidWagerTransactionError);
     expect(context.wallets.findByIdForUpdate).not.toHaveBeenCalled();
-    expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+    expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
   });
 
   test('unexpected aggregate errors propagate without recording a rejection', async () => {
@@ -220,7 +222,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     const debit = spyOn(wallet, 'debit').mockImplementation(() => { throw error; });
     try {
       await expect(useCase.execute(input)).rejects.toBe(error);
-      expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+      expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
       expectNoWalletWrites(context);
     } finally {
       debit.mockRestore();
@@ -232,8 +234,8 @@ describe('ProcessWagerTransactionUseCase', () => {
     const error = new InsufficientFundsError();
     context.ledger.append.mockRejectedValue(error);
     await expect(useCase.execute(input)).rejects.toBe(error);
-    expect(context.transactions.saveFinalStateAndResult).toHaveBeenCalledTimes(1);
-    expect(context.transactions.saveFinalStateAndResult.mock.calls[0]?.[0].status).toBe(Status.Processed);
+    expect(context.transactions.saveStateAndResult).toHaveBeenCalledTimes(1);
+    expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].status).toBe(Status.Processed);
   });
 
   test('propagates a commit failure instead of returning success or retrying', async () => {
@@ -246,7 +248,7 @@ describe('ProcessWagerTransactionUseCase', () => {
       },
     };
     await expect(new ProcessWagerTransactionUseCase(persistence).execute(input)).rejects.toBe(error);
-    expect(context.transactions.saveFinalStateAndResult).toHaveBeenCalledTimes(1);
+    expect(context.transactions.saveStateAndResult).toHaveBeenCalledTimes(1);
   });
 
   test('awaits the persistent claim before attempting a wallet lock', async () => {
@@ -264,7 +266,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     const { wallet, context, input: base, useCase } = setup();
     const input = withPayload(base, { kind });
     const first = await useCase.execute(input);
-    const saved = context.transactions.saveFinalStateAndResult.mock.calls[0];
+    const saved = context.transactions.saveStateAndResult.mock.calls[0];
     if (saved === undefined) throw new Error('Expected a saved original result');
     const entry = context.ledger.append.mock.calls[0]?.[0];
     context.transactions.tryClaim.mockResolvedValue(false);
@@ -274,14 +276,14 @@ describe('ProcessWagerTransactionUseCase', () => {
     context.wallets.findByIdForUpdate.mockClear();
     context.wallets.save.mockClear();
     context.ledger.append.mockClear();
-    context.transactions.saveFinalStateAndResult.mockClear();
+    context.transactions.saveStateAndResult.mockClear();
     const debit = spyOn(wallet, 'debit');
     const credit = spyOn(wallet, 'credit');
     try {
       const replay = await useCase.execute(input);
       expect(replay).toEqual({ ...first, idempotentReplay: true });
       expect(context.wallets.findByIdForUpdate).not.toHaveBeenCalled();
-      expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+      expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
       expect(debit).not.toHaveBeenCalled();
       expect(credit).not.toHaveBeenCalled();
       expectNoWalletWrites(context);
@@ -301,7 +303,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     context.transactions.findByIdempotencyKey.mockResolvedValue({ transaction: original, snapshot: undefined });
     await expect(useCase.execute(input)).rejects.toBeInstanceOf(IdempotencyConflictError);
     expect(context.wallets.findByIdForUpdate).not.toHaveBeenCalled();
-    expect(context.transactions.saveFinalStateAndResult).not.toHaveBeenCalled();
+    expect(context.transactions.saveStateAndResult).not.toHaveBeenCalled();
     expect(context.transactions.findByProviderAndExternalTransactionId).not.toHaveBeenCalled();
     expectNoWalletWrites(context);
   });

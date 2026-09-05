@@ -16,6 +16,27 @@ import { WalletEntity } from './wallet.entity.js';
 
 @Entity({ tableName: 'wager_transactions' })
 @Check({
+  name: 'wager_transactions_reference_attempt_count_check',
+  expression: 'reference_attempt_count >= 0',
+})
+@Check({
+  name: 'wager_transactions_reference_schedule_check',
+  expression: `(status = 'PENDING_REFERENCE' and kind in ('REFUND', 'ROLLBACK') and
+    reference_next_attempt_at is not null and reference_deadline_at is not null and
+    reference_next_attempt_at <= reference_deadline_at) or
+    (status <> 'PENDING_REFERENCE' and reference_next_attempt_at is null and reference_deadline_at is null)`,
+})
+@Unique({
+  name: 'wager_transactions_processed_reversal_unique',
+  properties: ['referenceTransactionId', 'kind'],
+  where: "reference_transaction_id is not null and status = 'PROCESSED' and kind in ('REFUND', 'ROLLBACK')",
+})
+@Index({
+  name: 'wager_transactions_pending_reference_due_index',
+  properties: ['referenceNextAttemptAt', 'createdAt', 'id'],
+  where: "status = 'PENDING_REFERENCE'",
+})
+@Check({
   name: 'wager_transactions_result_all_or_none_check',
   expression: `(result_balance_amount is null and result_balance_currency is null and result_wallet_version is null) or
     (result_balance_amount is not null and result_balance_currency is not null and result_wallet_version is not null)`,
@@ -210,4 +231,13 @@ export class WagerTransactionEntity {
 
   @Property({ fieldName: 'result_wallet_version', type: 'integer', nullable: true })
   resultWalletVersion: number | null = null;
+
+  @Property({ fieldName: 'reference_attempt_count', type: 'integer', default: 0 })
+  referenceAttemptCount = 0;
+
+  @Property({ fieldName: 'reference_next_attempt_at', type: 'datetime', columnType: 'timestamptz', nullable: true })
+  referenceNextAttemptAt: Date | null = null;
+
+  @Property({ fieldName: 'reference_deadline_at', type: 'datetime', columnType: 'timestamptz', nullable: true })
+  referenceDeadlineAt: Date | null = null;
 }
