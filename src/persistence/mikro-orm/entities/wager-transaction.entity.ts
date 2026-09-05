@@ -1,4 +1,4 @@
-import { DecimalType } from '@mikro-orm/core';
+import { DecimalType, DeferMode } from '@mikro-orm/core';
 import {
   Check,
   Entity,
@@ -15,6 +15,23 @@ import { WagerTransactionStatus } from '../../../wagering/domain/wager-transacti
 import { WalletEntity } from './wallet.entity.js';
 
 @Entity({ tableName: 'wager_transactions' })
+@Check({
+  name: 'wager_transactions_result_all_or_none_check',
+  expression: `(result_balance_amount is null and result_balance_currency is null and result_wallet_version is null) or
+    (result_balance_amount is not null and result_balance_currency is not null and result_wallet_version is not null)`,
+})
+@Check({
+  name: 'wager_transactions_result_balance_check',
+  expression: "result_balance_amount >= 0 and result_balance_amount <> 'NaN'::numeric",
+})
+@Check({
+  name: 'wager_transactions_result_currency_check',
+  expression: "result_balance_currency ~ '^[A-Z]{3}$'",
+})
+@Check({
+  name: 'wager_transactions_result_version_check',
+  expression: 'result_wallet_version >= 1',
+})
 @Check({
   name: 'wager_transactions_required_fields_check',
   expression: `
@@ -121,6 +138,7 @@ export class WagerTransactionEntity {
     deleteRule: 'restrict',
     updateRule: 'restrict',
     foreignKeyName: 'wager_transactions_wallet_fk',
+    deferMode: DeferMode.INITIALLY_IMMEDIATE,
   })
   walletId!: string;
 
@@ -183,4 +201,13 @@ export class WagerTransactionEntity {
     nullable: true,
   })
   processedAt!: Date | null;
+
+  @Property({ fieldName: 'result_balance_amount', type: new DecimalType('string'), columnType: 'numeric(20,2)', nullable: true })
+  resultBalanceAmount: string | null = null;
+
+  @Property({ fieldName: 'result_balance_currency', type: 'string', columnType: 'varchar(3)', nullable: true })
+  resultBalanceCurrency: string | null = null;
+
+  @Property({ fieldName: 'result_wallet_version', type: 'integer', nullable: true })
+  resultWalletVersion: number | null = null;
 }

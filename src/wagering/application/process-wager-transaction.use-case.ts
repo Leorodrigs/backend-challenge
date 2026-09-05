@@ -5,20 +5,26 @@ import { InsufficientFundsError } from '../../wallet/domain/errors/wallet.errors
 import { WalletLedgerEntry } from '../../wallet/domain/wallet-ledger-entry.js';
 import type { WalletBalanceChange } from '../../wallet/domain/wallet.js';
 import { FailureCode } from '../domain/failure-code.js';
-import {
-  WagerTransaction,
-  type CreateWagerTransactionProps,
-} from '../domain/wager-transaction.js';
+import { WagerTransaction } from '../domain/wager-transaction.js';
 import { WagerTransactionKind } from '../domain/wager-transaction-kind.js';
 import { WagerTransactionStatus } from '../domain/wager-transaction-status.js';
 import {
+  ExternalTransactionConflictError,
+  IdempotencyConflictError,
   UnsupportedWagerTransactionKindError,
+  WagerClaimConflictError,
+  WagerResultUnavailableError,
   WalletNotFoundError,
   WalletPlayerMismatchError,
 } from './errors/wager-processing.errors.js';
 import type { WagerProcessingPersistence } from './wager-processing.persistence.js';
+import type { WagerBusinessPayload } from './wager-business-payload.js';
+import { WagerPayloadHasher } from './wager-payload-hasher.js';
 
-export type ProcessWagerTransactionInput = CreateWagerTransactionProps;
+export interface ProcessWagerTransactionInput {
+  idempotencyKey: string;
+  payload: WagerBusinessPayload;
+}
 
 export interface ProcessWagerTransactionResult {
   transactionId: string;
@@ -27,26 +33,73 @@ export interface ProcessWagerTransactionResult {
   walletVersion: number;
   failureCode?: FailureCode;
   ledgerEntryId?: string;
+  idempotentReplay: boolean;
 }
 
 export class ProcessWagerTransactionUseCase {
+  private readonly payloadHasher = new WagerPayloadHasher();
+
   constructor(private readonly persistence: WagerProcessingPersistence) {}
 
   async execute(
     input: ProcessWagerTransactionInput,
   ): Promise<ProcessWagerTransactionResult> {
     if (
-      input.kind !== WagerTransactionKind.Bet &&
-      input.kind !== WagerTransactionKind.Win &&
-      input.kind !== WagerTransactionKind.Loss
+      input.payload.kind !== WagerTransactionKind.Bet &&
+      input.payload.kind !== WagerTransactionKind.Win &&
+      input.payload.kind !== WagerTransactionKind.Loss
     ) {
-      throw new UnsupportedWagerTransactionKindError(input.kind);
+      throw new UnsupportedWagerTransactionKindError(input.payload.kind);
     }
 
-    const transaction = WagerTransaction.create(input);
+    const transaction = WagerTransaction.create({
+      ...input.payload,
+      id: randomUUID(),
+      idempotencyKey: input.idempotencyKey,
+      payloadHash: this.payloadHasher.hash(input.payload),
+      createdAt: new Date(),
+    });
 
     return this.persistence.transactional(async (context) => {
       const { wallets, transactions, ledger } = context;
+      if (!(await transactions.tryClaim(transaction))) {
+        const existing = await transactions.findByIdempotencyKey(
+          transaction.idempotencyKey,
+        );
+        if (existing !== undefined) {
+          const original = existing.transaction;
+          if (!original.matchesPayload(transaction.payloadHash)) {
+            throw new IdempotencyConflictError(transaction.idempotencyKey);
+          }
+          if (existing.snapshot === undefined) {
+            throw new WagerResultUnavailableError(original.id, original.status);
+          }
+          const originalEntry = await ledger.findByWalletAndTransactionId(
+            original.walletId, original.id,
+          );
+          return {
+            transactionId: original.id,
+            status: original.status,
+            ...existing.snapshot,
+            ...(original.failureCode === undefined
+              ? {}
+              : { failureCode: original.failureCode }),
+            ...(originalEntry === undefined
+              ? {}
+              : { ledgerEntryId: originalEntry.id }),
+            idempotentReplay: true,
+          };
+        }
+        const external = await transactions.findByProviderAndExternalTransactionId(
+          transaction.providerId, transaction.externalTransactionId,
+        );
+        if (external !== undefined) {
+          throw new ExternalTransactionConflictError(
+            transaction.providerId, transaction.externalTransactionId,
+          );
+        }
+        throw new WagerClaimConflictError();
+      }
       const wallet = await wallets.findByIdForUpdate(transaction.walletId);
 
       if (wallet === undefined) {
@@ -96,7 +149,8 @@ export class ProcessWagerTransactionUseCase {
             createdAt: processedAt,
           });
 
-      await transactions.save(transaction);
+      const snapshot = { balance: wallet.balance, walletVersion: wallet.version };
+      await transactions.saveFinalStateAndResult(transaction, snapshot);
 
       if (entry !== undefined) {
         await wallets.save(wallet);
@@ -112,6 +166,7 @@ export class ProcessWagerTransactionUseCase {
           ? {}
           : { failureCode: transaction.failureCode }),
         ...(entry === undefined ? {} : { ledgerEntryId: entry.id }),
+        idempotentReplay: false,
       };
     });
   }
