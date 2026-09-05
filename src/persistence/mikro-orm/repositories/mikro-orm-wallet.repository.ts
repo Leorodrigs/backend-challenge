@@ -1,4 +1,4 @@
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, LockMode } from '@mikro-orm/core';
 import { Injectable } from '@nestjs/common';
 
 import { Wallet } from '../../../wallet/domain/wallet.js';
@@ -11,6 +11,15 @@ export class MikroOrmWalletRepository {
 
   async findById(id: string): Promise<Wallet | undefined> {
     const entity = await this.entityManager.findOne(WalletEntity, { id });
+    return entity === null ? undefined : WalletMapper.toDomain(entity);
+  }
+
+  async findByIdForUpdate(id: string): Promise<Wallet | undefined> {
+    const entity = await this.entityManager.findOne(
+      WalletEntity,
+      { id },
+      { lockMode: LockMode.PESSIMISTIC_WRITE, refresh: true },
+    );
     return entity === null ? undefined : WalletMapper.toDomain(entity);
   }
 
