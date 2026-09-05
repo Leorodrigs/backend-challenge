@@ -2,8 +2,23 @@ import { Money } from '../../../shared/domain/value-objects/money.js';
 import { WagerTransaction } from '../../../wagering/domain/wager-transaction.js';
 import { WagerTransactionEntity } from '../entities/wager-transaction.entity.js';
 import type { WagerResultSnapshot } from '../../../wagering/application/wager-result-snapshot.js';
+import type { PendingReferenceRetryState } from '../../../wagering/application/pending-reference-retry-policy.js';
 
 export class WagerTransactionMapper {
+  static toRetryState(entity: WagerTransactionEntity): PendingReferenceRetryState {
+    return {
+      attemptCount: entity.referenceAttemptCount,
+      nextAttemptAt: entity.referenceNextAttemptAt === null ? null : new Date(entity.referenceNextAttemptAt),
+      deadlineAt: entity.referenceDeadlineAt === null ? null : new Date(entity.referenceDeadlineAt),
+    };
+  }
+
+  static applyRetryState(state: PendingReferenceRetryState, target: WagerTransactionEntity): void {
+    target.referenceAttemptCount = state.attemptCount;
+    target.referenceNextAttemptAt = state.nextAttemptAt;
+    target.referenceDeadlineAt = state.deadlineAt;
+  }
+
   static toResultSnapshot(entity: WagerTransactionEntity): WagerResultSnapshot | undefined {
     if (entity.resultBalanceAmount === null || entity.resultBalanceCurrency === null || entity.resultWalletVersion === null) {
       return undefined;

@@ -133,7 +133,7 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
-  test.each([Kind.Opening, Kind.Refund, Kind.Rollback])('%s remains outside the processing flow', async (kind) => {
+  test.each([Kind.Opening])('%s remains outside the processing flow', async (kind) => {
     const wallet = await seedWallet(database);
     const input = wagerInput(wallet, kind);
     await expect(useCase.execute(input)).rejects.toBeInstanceOf(UnsupportedWagerTransactionKindError);

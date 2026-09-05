@@ -4,7 +4,10 @@ import { Injectable } from '@nestjs/common';
 import { WagerTransaction } from '../../../wagering/domain/wager-transaction.js';
 import { WagerTransactionEntity } from '../entities/wager-transaction.entity.js';
 import { WagerTransactionMapper } from '../mappers/wager-transaction.mapper.js';
-import type { StoredWagerResult, WagerResultSnapshot } from '../../../wagering/application/wager-result-snapshot.js';
+import type { PendingReferenceWork, StoredWagerResult, WagerResultSnapshot } from '../../../wagering/application/wager-result-snapshot.js';
+import type { PendingReferenceRetryState } from '../../../wagering/application/pending-reference-retry-policy.js';
+import type { WagerTransactionKind } from '../../../wagering/domain/wager-transaction-kind.js';
+import { WagerTransactionStatus } from '../../../wagering/domain/wager-transaction-status.js';
 
 @Injectable()
 export class MikroOrmWagerTransactionRepository {
@@ -52,10 +55,39 @@ export class MikroOrmWagerTransactionRepository {
     return entity === null ? undefined : WagerTransactionMapper.toDomain(entity);
   }
 
-  async saveFinalStateAndResult(transaction: WagerTransaction, snapshot: WagerResultSnapshot): Promise<void> {
+  async hasProcessedReversal(referenceTransactionId: string, kind: WagerTransactionKind): Promise<boolean> {
+    return await this.entityManager.count(WagerTransactionEntity, {
+      referenceTransactionId, kind, status: WagerTransactionStatus.Processed,
+    }) > 0;
+  }
+
+  async claimNextPendingReference(now: Date): Promise<PendingReferenceWork | undefined> {
+    if (!this.entityManager.isInTransaction()) {
+      throw new Error('An open transaction is required for a pending reference claim');
+    }
+    const rows = await this.entityManager.execute<{ id: string }[]>(`
+      select id from wager_transactions
+      where status = 'PENDING_REFERENCE' and reference_next_attempt_at <= ?
+      order by reference_next_attempt_at, created_at, id
+      limit 1 for update skip locked
+    `, [now]);
+    const row = rows[0];
+    if (row === undefined) return undefined;
+    const entity = await this.entityManager.findOneOrFail(WagerTransactionEntity, { id: row.id }, { refresh: true });
+    return {
+      transaction: WagerTransactionMapper.toDomain(entity),
+      snapshot: WagerTransactionMapper.toResultSnapshot(entity),
+      retryState: WagerTransactionMapper.toRetryState(entity),
+    };
+  }
+
+  async saveStateAndResult(
+    transaction: WagerTransaction, snapshot: WagerResultSnapshot, retryState?: PendingReferenceRetryState,
+  ): Promise<void> {
     const existing = await this.entityManager.findOneOrFail(WagerTransactionEntity, { id: transaction.id });
     const entity = WagerTransactionMapper.toPersistence(transaction, existing);
     WagerTransactionMapper.applyResultSnapshot(snapshot, entity);
+    if (retryState !== undefined) WagerTransactionMapper.applyRetryState(retryState, entity);
     await this.entityManager.flush();
   }
 
