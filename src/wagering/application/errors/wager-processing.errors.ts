@@ -18,3 +18,31 @@ export class WalletPlayerMismatchError extends Error {
     this.name = 'WalletPlayerMismatchError';
   }
 }
+
+export class IdempotencyConflictError extends Error {
+  constructor(public readonly idempotencyKey: string) {
+    super('The idempotency key is already associated with a different business payload');
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
+export class ExternalTransactionConflictError extends Error {
+  constructor(public readonly providerId: string, public readonly externalTransactionId: string) {
+    super('The external operation is already associated with another idempotency key');
+    this.name = 'ExternalTransactionConflictError';
+  }
+}
+
+export class WagerClaimConflictError extends Error {
+  constructor() {
+    super('The claim collided with a structural key without a matching logical operation');
+    this.name = 'WagerClaimConflictError';
+  }
+}
+
+export class WagerResultUnavailableError extends Error {
+  constructor(public readonly transactionId: string, public readonly status: string) {
+    super('The stored operation has no historical result snapshot');
+    this.name = 'WagerResultUnavailableError';
+  }
+}

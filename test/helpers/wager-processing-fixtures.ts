@@ -6,6 +6,8 @@ import { MikroOrmWalletLedgerEntryRepository } from '../../src/persistence/mikro
 import { MikroOrmWalletRepository } from '../../src/persistence/mikro-orm/repositories/mikro-orm-wallet.repository.js';
 import { Money } from '../../src/shared/domain/value-objects/money.js';
 import type { ProcessWagerTransactionInput } from '../../src/wagering/application/process-wager-transaction.use-case.js';
+import type { WagerBusinessPayload } from '../../src/wagering/application/wager-business-payload.js';
+import { WagerPayloadHasher } from '../../src/wagering/application/wager-payload-hasher.js';
 import { WagerTransaction } from '../../src/wagering/domain/wager-transaction.js';
 import { WagerTransactionKind } from '../../src/wagering/domain/wager-transaction-kind.js';
 import { LedgerDirection } from '../../src/wallet/domain/ledger-direction.js';
@@ -20,21 +22,22 @@ export function wagerInput(
   wallet: Wallet,
   kind: WagerTransactionKind,
   amount = '25.00',
+  overrides: Partial<WagerBusinessPayload> = {},
 ): ProcessWagerTransactionInput {
   const id = randomUUID();
   return {
-    id,
-    providerId: 'test-provider',
-    externalTransactionId: `external-${id}`,
     idempotencyKey: `key-${id}`,
-    payloadHash: `hash-${id}`,
-    walletId: wallet.id,
-    playerId: wallet.playerId,
-    roundId: `round-${id}`,
-    gameId: 'test-game',
-    kind,
-    money: money(amount, wallet.currency),
-    createdAt: openingTime,
+    payload: {
+      providerId: 'test-provider',
+      externalTransactionId: `external-${id}`,
+      walletId: wallet.id,
+      playerId: wallet.playerId,
+      roundId: `round-${id}`,
+      gameId: 'test-game',
+      kind,
+      money: money(amount, wallet.currency),
+      ...overrides,
+    },
   };
 }
 
@@ -51,7 +54,11 @@ export async function seedWallet(
     if (wallet.balance.isZero()) {
       return;
     }
-    const opening = WagerTransaction.create(wagerInput(wallet, WagerTransactionKind.Opening, amount));
+    const input = wagerInput(wallet, WagerTransactionKind.Opening, amount);
+    const opening = WagerTransaction.create({
+      ...input.payload, id: randomUUID(), idempotencyKey: input.idempotencyKey,
+      payloadHash: new WagerPayloadHasher().hash(input.payload), createdAt: openingTime,
+    });
     opening.markProcessed(undefined, openingTime);
     await new MikroOrmWagerTransactionRepository(em).save(opening);
     await new MikroOrmWalletLedgerEntryRepository(em).append(WalletLedgerEntry.create({
@@ -90,11 +97,14 @@ export async function expectWalletState(
   return loaded;
 }
 
-export async function loadTransaction(database: WagerProcessingDatabase, id: string) {
-  return new MikroOrmWagerTransactionRepository(database.orm.em.fork()).findById(id);
+export async function loadTransaction(database: WagerProcessingDatabase, input: string | ProcessWagerTransactionInput) {
+  const repository = new MikroOrmWagerTransactionRepository(database.orm.em.fork());
+  return typeof input === 'string' ? repository.findById(input)
+    : (await repository.findByIdempotencyKey(input.idempotencyKey))?.transaction;
 }
 
-export async function loadLedger(database: WagerProcessingDatabase, transactionId: string) {
+export async function loadLedger(database: WagerProcessingDatabase, input: string | ProcessWagerTransactionInput) {
+  const transactionId = typeof input === 'string' ? input : (await loadTransaction(database, input))?.id;
   return database.pool.query<{
     id: string;
     wallet_id: string;

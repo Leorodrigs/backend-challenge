@@ -158,8 +158,15 @@
           "default": null,
           "comment": null,
           "collation": null,
-          "enumItems": [],
-          "mappedType": "text"
+          "enumItems": [
+            "OPENING",
+            "BET",
+            "WIN",
+            "LOSS",
+            "REFUND",
+            "ROLLBACK"
+          ],
+          "mappedType": "enum"
         },
         "payload_hash": {
           "name": "payload_hash",
@@ -263,6 +270,57 @@
           "enumItems": [],
           "mappedType": "text"
         },
+        "result_balance_amount": {
+          "name": "result_balance_amount",
+          "type": "numeric(20,2)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": 20,
+          "scale": 2,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "decimal"
+        },
+        "result_balance_currency": {
+          "name": "result_balance_currency",
+          "type": "varchar(3)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 3,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "result_wallet_version": {
+          "name": "result_wallet_version",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
         "round_id": {
           "name": "round_id",
           "type": "text",
@@ -294,8 +352,14 @@
           "default": null,
           "comment": null,
           "collation": null,
-          "enumItems": [],
-          "mappedType": "text"
+          "enumItems": [
+            "PENDING",
+            "PENDING_REFERENCE",
+            "PROCESSED",
+            "REJECTED",
+            "FAILED"
+          ],
+          "mappedType": "enum"
         },
         "wallet_id": {
           "name": "wallet_id",
@@ -383,57 +447,92 @@
         {
           "name": "wager_transactions_amount_non_negative_check",
           "expression": "amount >= 0",
-          "definition": "check (amount >= 0)"
+          "definition": "CHECK ((amount >= (0)::numeric))",
+          "columnName": "amount"
         },
         {
           "name": "wager_transactions_currency_check",
-          "expression": "currency ~ '^[A-Z]{3}$'",
-          "definition": "check (currency ~ '^[A-Z]{3}$')"
+          "expression": "currency ~ '^[A-Z]{3}$'::text",
+          "definition": "CHECK (((currency)::text ~ '^[A-Z]{3}$'::text))",
+          "columnName": "currency"
         },
         {
           "name": "wager_transactions_failure_code_check",
           "expression": "(failure_code IS NULL) OR (failure_code = ANY (ARRAY['INSUFFICIENT_FUNDS'::text, 'CURRENCY_MISMATCH'::text, 'REFERENCE_NOT_FOUND'::text, 'INVALID_REFERENCE'::text, 'REFERENCE_ALREADY_REVERSED'::text, 'REVERSAL_AMOUNT_MISMATCH'::text, 'REVERSAL_WOULD_MAKE_BALANCE_NEGATIVE'::text, 'PERMANENT_INFRASTRUCTURE_FAILURE'::text]))",
-          "definition": "check ((failure_code IS NULL) OR (failure_code = ANY (ARRAY['INSUFFICIENT_FUNDS'::text, 'CURRENCY_MISMATCH'::text, 'REFERENCE_NOT_FOUND'::text, 'INVALID_REFERENCE'::text, 'REFERENCE_ALREADY_REVERSED'::text, 'REVERSAL_AMOUNT_MISMATCH'::text, 'REVERSAL_WOULD_MAKE_BALANCE_NEGATIVE'::text, 'PERMANENT_INFRASTRUCTURE_FAILURE'::text])))"
+          "definition": "CHECK (((failure_code IS NULL) OR (failure_code = ANY (ARRAY['INSUFFICIENT_FUNDS'::text, 'CURRENCY_MISMATCH'::text, 'REFERENCE_NOT_FOUND'::text, 'INVALID_REFERENCE'::text, 'REFERENCE_ALREADY_REVERSED'::text, 'REVERSAL_AMOUNT_MISMATCH'::text, 'REVERSAL_WOULD_MAKE_BALANCE_NEGATIVE'::text, 'PERMANENT_INFRASTRUCTURE_FAILURE'::text]))))",
+          "columnName": "failure_code"
         },
         {
           "name": "wager_transactions_kind_check",
-          "expression": "kind in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK')",
-          "definition": "check (kind in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK'))"
+          "expression": "\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK')",
+          "definition": "check (\"kind\" in ('OPENING', 'BET', 'WIN', 'LOSS', 'REFUND', 'ROLLBACK'))",
+          "columnName": "kind"
         },
         {
           "name": "wager_transactions_processed_at_check",
-          "expression": "(status = 'PROCESSED') = (processed_at is not null)",
-          "definition": "check ((status = 'PROCESSED') = (processed_at is not null))"
+          "expression": "(status = 'PROCESSED'::text) = (processed_at IS NOT NULL)",
+          "definition": "CHECK (((status = 'PROCESSED'::text) = (processed_at IS NOT NULL)))",
+          "columnName": "processed_at"
         },
         {
           "name": "wager_transactions_processed_reference_check",
           "expression": "(kind <> ALL (ARRAY['REFUND'::text, 'ROLLBACK'::text])) OR (status <> 'PROCESSED'::text) OR (reference_transaction_id IS NOT NULL)",
-          "definition": "check ((kind <> ALL (ARRAY['REFUND'::text, 'ROLLBACK'::text])) OR (status <> 'PROCESSED'::text) OR (reference_transaction_id IS NOT NULL))"
+          "definition": "CHECK (((kind <> ALL (ARRAY['REFUND'::text, 'ROLLBACK'::text])) OR (status <> 'PROCESSED'::text) OR (reference_transaction_id IS NOT NULL)))",
+          "columnName": "kind"
         },
         {
           "name": "wager_transactions_reference_not_blank_check",
-          "expression": "\n    reference_external_transaction_id is null or\n    (length(reference_external_transaction_id) > 0 and btrim(reference_external_transaction_id) = reference_external_transaction_id)\n  ",
-          "definition": "check (\n    reference_external_transaction_id is null or\n    (length(reference_external_transaction_id) > 0 and btrim(reference_external_transaction_id) = reference_external_transaction_id)\n  )"
+          "expression": "(reference_external_transaction_id IS NULL) OR ((length(reference_external_transaction_id) > 0) AND (btrim(reference_external_transaction_id) = reference_external_transaction_id))",
+          "definition": "CHECK (((reference_external_transaction_id IS NULL) OR ((length(reference_external_transaction_id) > 0) AND (btrim(reference_external_transaction_id) = reference_external_transaction_id))))",
+          "columnName": "reference_external_transaction_id"
         },
         {
           "name": "wager_transactions_reference_required_check",
           "expression": "(kind <> ALL (ARRAY['REFUND'::text, 'ROLLBACK'::text])) OR (reference_external_transaction_id IS NOT NULL)",
-          "definition": "check ((kind <> ALL (ARRAY['REFUND'::text, 'ROLLBACK'::text])) OR (reference_external_transaction_id IS NOT NULL))"
+          "definition": "CHECK (((kind <> ALL (ARRAY['REFUND'::text, 'ROLLBACK'::text])) OR (reference_external_transaction_id IS NOT NULL)))",
+          "columnName": "kind"
         },
         {
           "name": "wager_transactions_required_fields_check",
-          "expression": "\n    length(id) > 0 and btrim(id) = id and\n    length(provider_id) > 0 and btrim(provider_id) = provider_id and\n    length(external_transaction_id) > 0 and btrim(external_transaction_id) = external_transaction_id and\n    length(idempotency_key) > 0 and btrim(idempotency_key) = idempotency_key and\n    length(payload_hash) > 0 and btrim(payload_hash) = payload_hash and\n    length(player_id) > 0 and btrim(player_id) = player_id and\n    length(round_id) > 0 and btrim(round_id) = round_id and\n    length(game_id) > 0 and btrim(game_id) = game_id\n  ",
-          "definition": "check (\n    length(id) > 0 and btrim(id) = id and\n    length(provider_id) > 0 and btrim(provider_id) = provider_id and\n    length(external_transaction_id) > 0 and btrim(external_transaction_id) = external_transaction_id and\n    length(idempotency_key) > 0 and btrim(idempotency_key) = idempotency_key and\n    length(payload_hash) > 0 and btrim(payload_hash) = payload_hash and\n    length(player_id) > 0 and btrim(player_id) = player_id and\n    length(round_id) > 0 and btrim(round_id) = round_id and\n    length(game_id) > 0 and btrim(game_id) = game_id\n  )"
+          "expression": "(length(id) > 0) AND (btrim(id) = id) AND (length(provider_id) > 0) AND (btrim(provider_id) = provider_id) AND (length(external_transaction_id) > 0) AND (btrim(external_transaction_id) = external_transaction_id) AND (length(idempotency_key) > 0) AND (btrim(idempotency_key) = idempotency_key) AND (length(payload_hash) > 0) AND (btrim(payload_hash) = payload_hash) AND (length(player_id) > 0) AND (btrim(player_id) = player_id) AND (length(round_id) > 0) AND (btrim(round_id) = round_id) AND (length(game_id) > 0) AND (btrim(game_id) = game_id)",
+          "definition": "CHECK (((length(id) > 0) AND (btrim(id) = id) AND (length(provider_id) > 0) AND (btrim(provider_id) = provider_id) AND (length(external_transaction_id) > 0) AND (btrim(external_transaction_id) = external_transaction_id) AND (length(idempotency_key) > 0) AND (btrim(idempotency_key) = idempotency_key) AND (length(payload_hash) > 0) AND (btrim(payload_hash) = payload_hash) AND (length(player_id) > 0) AND (btrim(player_id) = player_id) AND (length(round_id) > 0) AND (btrim(round_id) = round_id) AND (length(game_id) > 0) AND (btrim(game_id) = game_id)))",
+          "columnName": "external_transaction_id"
+        },
+        {
+          "name": "wager_transactions_result_all_or_none_check",
+          "expression": "((result_balance_amount IS NULL) AND (result_balance_currency IS NULL) AND (result_wallet_version IS NULL)) OR ((result_balance_amount IS NOT NULL) AND (result_balance_currency IS NOT NULL) AND (result_wallet_version IS NOT NULL))",
+          "definition": "CHECK ((((result_balance_amount IS NULL) AND (result_balance_currency IS NULL) AND (result_wallet_version IS NULL)) OR ((result_balance_amount IS NOT NULL) AND (result_balance_currency IS NOT NULL) AND (result_wallet_version IS NOT NULL))))",
+          "columnName": "result_balance_amount"
+        },
+        {
+          "name": "wager_transactions_result_balance_check",
+          "expression": "(result_balance_amount >= 0) AND (result_balance_amount <> 'NaN'::numeric)",
+          "definition": "CHECK (((result_balance_amount >= (0)::numeric) AND (result_balance_amount <> 'NaN'::numeric)))",
+          "columnName": "result_balance_amount"
+        },
+        {
+          "name": "wager_transactions_result_currency_check",
+          "expression": "result_balance_currency ~ '^[A-Z]{3}$'::text",
+          "definition": "CHECK (((result_balance_currency)::text ~ '^[A-Z]{3}$'::text))",
+          "columnName": "result_balance_currency"
+        },
+        {
+          "name": "wager_transactions_result_version_check",
+          "expression": "result_wallet_version >= 1",
+          "definition": "CHECK ((result_wallet_version >= 1))",
+          "columnName": "result_wallet_version"
         },
         {
           "name": "wager_transactions_status_check",
-          "expression": "status in ('PENDING', 'PENDING_REFERENCE', 'PROCESSED', 'REJECTED', 'FAILED')",
-          "definition": "check (status in ('PENDING', 'PENDING_REFERENCE', 'PROCESSED', 'REJECTED', 'FAILED'))"
+          "expression": "\"status\" in ('PENDING', 'PENDING_REFERENCE', 'PROCESSED', 'REJECTED', 'FAILED')",
+          "definition": "check (\"status\" in ('PENDING', 'PENDING_REFERENCE', 'PROCESSED', 'REJECTED', 'FAILED'))",
+          "columnName": "status"
         },
         {
           "name": "wager_transactions_terminal_failure_check",
-          "expression": "(status in ('REJECTED', 'FAILED')) = (failure_code is not null)",
-          "definition": "check ((status in ('REJECTED', 'FAILED')) = (failure_code is not null))"
+          "expression": "(status = ANY (ARRAY['REJECTED'::text, 'FAILED'::text])) = (failure_code IS NOT NULL)",
+          "definition": "CHECK (((status = ANY (ARRAY['REJECTED'::text, 'FAILED'::text])) = (failure_code IS NOT NULL)))",
+          "columnName": "failure_code"
         }
       ],
       "triggers": [],
@@ -462,7 +561,8 @@
           ],
           "referencedTableName": "public.wallets",
           "updateRule": "restrict",
-          "deleteRule": "restrict"
+          "deleteRule": "restrict",
+          "deferMode": "immediate"
         }
       },
       "comment": null
@@ -570,8 +670,11 @@
           "default": null,
           "comment": null,
           "collation": null,
-          "enumItems": [],
-          "mappedType": "text"
+          "enumItems": [
+            "DEBIT",
+            "CREDIT"
+          ],
+          "mappedType": "enum"
         },
         "id": {
           "name": "id",
@@ -664,37 +767,44 @@
         {
           "name": "wallet_ledger_entries_amount_non_negative_check",
           "expression": "amount >= 0",
-          "definition": "check (amount >= 0)"
+          "definition": "CHECK ((amount >= (0)::numeric))",
+          "columnName": "amount"
         },
         {
           "name": "wallet_ledger_entries_arithmetic_check",
-          "expression": "\n    (direction = 'CREDIT' and balance_after = balance_before + amount) or\n    (direction = 'DEBIT' and balance_after = balance_before - amount)\n  ",
-          "definition": "check (\n    (direction = 'CREDIT' and balance_after = balance_before + amount) or\n    (direction = 'DEBIT' and balance_after = balance_before - amount)\n  )"
+          "expression": "((direction = 'CREDIT'::text) AND (balance_after = (balance_before + amount))) OR ((direction = 'DEBIT'::text) AND (balance_after = (balance_before - amount)))",
+          "definition": "CHECK ((((direction = 'CREDIT'::text) AND (balance_after = (balance_before + amount))) OR ((direction = 'DEBIT'::text) AND (balance_after = (balance_before - amount)))))",
+          "columnName": "amount"
         },
         {
           "name": "wallet_ledger_entries_balance_after_non_negative_check",
           "expression": "balance_after >= 0",
-          "definition": "check (balance_after >= 0)"
+          "definition": "CHECK ((balance_after >= (0)::numeric))",
+          "columnName": "balance_after"
         },
         {
           "name": "wallet_ledger_entries_balance_before_non_negative_check",
           "expression": "balance_before >= 0",
-          "definition": "check (balance_before >= 0)"
+          "definition": "CHECK ((balance_before >= (0)::numeric))",
+          "columnName": "balance_before"
         },
         {
           "name": "wallet_ledger_entries_currency_check",
-          "expression": "currency ~ '^[A-Z]{3}$'",
-          "definition": "check (currency ~ '^[A-Z]{3}$')"
+          "expression": "currency ~ '^[A-Z]{3}$'::text",
+          "definition": "CHECK (((currency)::text ~ '^[A-Z]{3}$'::text))",
+          "columnName": "currency"
         },
         {
           "name": "wallet_ledger_entries_direction_check",
-          "expression": "direction in ('DEBIT', 'CREDIT')",
-          "definition": "check (direction in ('DEBIT', 'CREDIT'))"
+          "expression": "\"direction\" in ('DEBIT', 'CREDIT')",
+          "definition": "check (\"direction\" in ('DEBIT', 'CREDIT'))",
+          "columnName": "direction"
         },
         {
           "name": "wallet_ledger_entries_id_not_blank_check",
-          "expression": "length(id) > 0 and btrim(id) = id",
-          "definition": "check (length(id) > 0 and btrim(id) = id)"
+          "expression": "(length(id) > 0) AND (btrim(id) = id)",
+          "definition": "CHECK (((length(id) > 0) AND (btrim(id) = id)))",
+          "columnName": "id"
         }
       ],
       "triggers": [
@@ -702,12 +812,11 @@
           "name": "wallet_ledger_entries_immutable_trigger",
           "timing": "before",
           "events": [
-            "update",
-            "delete"
+            "delete",
+            "update"
           ],
           "forEach": "row",
-          "body": "",
-          "expression": "\n    create trigger \"wallet_ledger_entries_immutable_trigger\"\n    before update or delete on \"wallet_ledger_entries\"\n    for each row execute function \"prevent_wallet_ledger_entry_mutation\"()\n  "
+          "body": ""
         }
       ],
       "foreignKeys": {
@@ -893,27 +1002,32 @@
         {
           "name": "wallets_balance_non_negative_check",
           "expression": "balance_amount >= 0",
-          "definition": "check (balance_amount >= 0)"
+          "definition": "CHECK ((balance_amount >= (0)::numeric))",
+          "columnName": "balance_amount"
         },
         {
           "name": "wallets_currency_check",
-          "expression": "currency ~ '^[A-Z]{3}$'",
-          "definition": "check (currency ~ '^[A-Z]{3}$')"
+          "expression": "currency ~ '^[A-Z]{3}$'::text",
+          "definition": "CHECK (((currency)::text ~ '^[A-Z]{3}$'::text))",
+          "columnName": "currency"
         },
         {
           "name": "wallets_id_not_blank_check",
-          "expression": "length(id) > 0 and btrim(id) = id",
-          "definition": "check (length(id) > 0 and btrim(id) = id)"
+          "expression": "(length(id) > 0) AND (btrim(id) = id)",
+          "definition": "CHECK (((length(id) > 0) AND (btrim(id) = id)))",
+          "columnName": "id"
         },
         {
           "name": "wallets_player_id_not_blank_check",
-          "expression": "length(player_id) > 0 and btrim(player_id) = player_id",
-          "definition": "check (length(player_id) > 0 and btrim(player_id) = player_id)"
+          "expression": "(length(player_id) > 0) AND (btrim(player_id) = player_id)",
+          "definition": "CHECK (((length(player_id) > 0) AND (btrim(player_id) = player_id)))",
+          "columnName": "player_id"
         },
         {
           "name": "wallets_version_positive_check",
           "expression": "version >= 1",
-          "definition": "check (version >= 1)"
+          "definition": "CHECK ((version >= 1))",
+          "columnName": "version"
         }
       ],
       "triggers": [],

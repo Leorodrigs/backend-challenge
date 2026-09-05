@@ -1,4 +1,5 @@
 import { EntityManager, IsolationLevel } from '@mikro-orm/core';
+import type { EntityManager as PostgreSqlEntityManager } from '@mikro-orm/postgresql';
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
@@ -12,7 +13,7 @@ import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.reposi
 @Injectable()
 export class MikroOrmWagerProcessingPersistence extends WagerProcessingPersistence {
   constructor(
-    @Inject(EntityManager) private readonly entityManager: EntityManager,
+    @Inject(EntityManager) private readonly entityManager: PostgreSqlEntityManager,
   ) {
     super();
   }

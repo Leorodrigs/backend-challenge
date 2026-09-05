@@ -7,6 +7,7 @@ import {
   WalletNotFoundError,
   WalletPlayerMismatchError,
 } from '../../src/wagering/application/errors/wager-processing.errors.js';
+import { WagerPayloadHasher } from '../../src/wagering/application/wager-payload-hasher.js';
 import { ProcessWagerTransactionUseCase } from '../../src/wagering/application/process-wager-transaction.use-case.js';
 import type { WagerProcessingPersistence } from '../../src/wagering/application/wager-processing.persistence.js';
 import { FailureCode } from '../../src/wagering/domain/failure-code.js';
@@ -39,18 +40,19 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     const input = wagerInput(wallet, kind);
     const result = await useCase.execute(input);
     const loaded = await expectWalletState(database, wallet, after, 2);
-    const transaction = await loadTransaction(database, input.id);
-    const ledger = await loadLedger(database, input.id);
+    const transaction = await loadTransaction(database, input);
+    const ledger = await loadLedger(database, input);
 
-    expect(result.transactionId).toBe(input.id);
+    expect(transaction?.id).toBe(result.transactionId);
+    expect(result.idempotentReplay).toBe(false);
     expect(result.status).toBe(Status.Processed);
     expect(result.balance.equals(loaded.balance)).toBe(true);
     expect(result.walletVersion).toBe(2);
     expect(result.failureCode).toBeUndefined();
     expect(transaction?.status).toBe(Status.Processed);
     expect(transaction?.failureCode).toBeUndefined();
-    expect(transaction?.money.equals(input.money)).toBe(true);
-    expect(transaction?.payloadHash).toBe(input.payloadHash);
+    expect(transaction?.money.equals(input.payload.money)).toBe(true);
+    expect(transaction?.payloadHash).toBe(new WagerPayloadHasher().hash(input.payload));
     expect(transaction?.idempotencyKey).toBe(input.idempotencyKey);
     expect(ledger.rows).toHaveLength(1);
     expect(ledger.rows[0]).toMatchObject({
@@ -66,7 +68,7 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     const input = wagerInput(wallet, Kind.Bet);
     const result = await useCase.execute(input);
     await expectWalletState(database, wallet, '20.00', 1);
-    const transaction = await loadTransaction(database, input.id);
+    const transaction = await loadTransaction(database, input);
 
     expect(result.status).toBe(Status.Rejected);
     expect(result.failureCode).toBe(FailureCode.InsufficientFunds);
@@ -76,7 +78,7 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     expect(transaction?.status).toBe(Status.Rejected);
     expect(transaction?.failureCode).toBe(FailureCode.InsufficientFunds);
     expect(transaction?.processedAt).toBeUndefined();
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test('LOSS preserves its amount and wallet balance/version without a ledger', async () => {
@@ -84,22 +86,22 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     const input = wagerInput(wallet, Kind.Loss, '80.00');
     const result = await useCase.execute(input);
     await expectWalletState(database, wallet, '100.00', 1);
-    const transaction = await loadTransaction(database, input.id);
+    const transaction = await loadTransaction(database, input);
     expect(result.status).toBe(Status.Processed);
     expect(result.balance.toJSON().amount).toBe('100.00');
     expect(result.walletVersion).toBe(1);
     expect(transaction?.status).toBe(Status.Processed);
     expect(transaction?.processedAt).toBeInstanceOf(Date);
     expect(transaction?.money.toJSON().amount).toBe('80.00');
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test.each([Kind.Bet, Kind.Win, Kind.Loss])('%s currency mismatch persists REJECTED without financial effects', async (kind) => {
     const wallet = await seedWallet(database);
-    const input = { ...wagerInput(wallet, kind), money: money('25.00', 'USD') };
+    const input = wagerInput(wallet, kind, '25.00', { money: money('25.00', 'USD') });
     const result = await useCase.execute(input);
     await expectWalletState(database, wallet, '100.00', 1);
-    const transaction = await loadTransaction(database, input.id);
+    const transaction = await loadTransaction(database, input);
 
     expect(result.status).toBe(Status.Rejected);
     expect(result.failureCode).toBe(FailureCode.CurrencyMismatch);
@@ -110,25 +112,25 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     expect(transaction?.failureCode).toBe(FailureCode.CurrencyMismatch);
     expect(transaction?.money.currency).toBe('USD');
     expect(transaction?.processedAt).toBeUndefined();
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test.each([Kind.Bet, Kind.Win, Kind.Loss])('%s player mismatch is an application error with no committed transaction', async (kind) => {
     const wallet = await seedWallet(database);
-    const input = { ...wagerInput(wallet, kind), playerId: 'another-player' };
+    const input = wagerInput(wallet, kind, '25.00', { playerId: 'another-player' });
     await expect(useCase.execute(input)).rejects.toBeInstanceOf(WalletPlayerMismatchError);
     await expectWalletState(database, wallet, '100.00', 1);
-    expect(await loadTransaction(database, input.id)).toBeUndefined();
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect(await loadTransaction(database, input)).toBeUndefined();
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test('missing wallet is an application error without persisting financial records', async () => {
     const wallet = await seedWallet(database);
-    const input = { ...wagerInput(wallet, Kind.Bet), walletId: 'missing-wallet' };
+    const input = wagerInput(wallet, Kind.Bet, '25.00', { walletId: 'missing-wallet' });
     await expect(useCase.execute(input)).rejects.toBeInstanceOf(WalletNotFoundError);
     await expectWalletState(database, wallet, '100.00', 1);
-    expect(await loadTransaction(database, input.id)).toBeUndefined();
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect(await loadTransaction(database, input)).toBeUndefined();
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test.each([Kind.Opening, Kind.Refund, Kind.Rollback])('%s remains outside the processing flow', async (kind) => {
@@ -136,8 +138,8 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     const input = wagerInput(wallet, kind);
     await expect(useCase.execute(input)).rejects.toBeInstanceOf(UnsupportedWagerTransactionKindError);
     await expectWalletState(database, wallet, '100.00', 1);
-    expect(await loadTransaction(database, input.id)).toBeUndefined();
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect(await loadTransaction(database, input)).toBeUndefined();
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test.each([Kind.Bet, Kind.Win])('%s zero is processed without changing balance/version or appending a ledger', async (kind) => {
@@ -148,18 +150,18 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     expect(result.status).toBe(Status.Processed);
     expect(result.walletVersion).toBe(1);
     expect(result.ledgerEntryId).toBeUndefined();
-    expect((await loadTransaction(database, input.id))?.status).toBe(Status.Processed);
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect((await loadTransaction(database, input))?.status).toBe(Status.Processed);
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
   });
 
   test('WIN preserves its optional external reference without an internal lookup', async () => {
     const wallet = await seedWallet(database);
-    const input = { ...wagerInput(wallet, Kind.Win), referenceExternalTransactionId: 'unresolved-external-bet' };
+    const input = wagerInput(wallet, Kind.Win, '25.00', { referenceExternalTransactionId: 'unresolved-external-bet' });
     await useCase.execute(input);
     await expectWalletState(database, wallet, '125.00', 2);
-    const transaction = await loadTransaction(database, input.id);
+    const transaction = await loadTransaction(database, input);
     expect(transaction?.status).toBe(Status.Processed);
-    expect(transaction?.referenceExternalTransactionId).toBe(input.referenceExternalTransactionId);
+    expect(transaction?.referenceExternalTransactionId).toBe(input.payload.referenceExternalTransactionId);
     expect(transaction?.referenceTransactionId).toBeUndefined();
   });
 
@@ -188,8 +190,8 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     };
     await expect(new ProcessWagerTransactionUseCase(failing).execute(input)).rejects.toBe(failure);
     await expectWalletState(database, wallet, '100.00', 1);
-    expect(await loadTransaction(database, input.id)).toBeUndefined();
-    expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+    expect(await loadTransaction(database, input)).toBeUndefined();
+    expect((await loadLedger(database, input)).rows).toHaveLength(0);
 
     // A fresh execution confirms that rollback released the lock and discarded state.
     await useCase.execute(wagerInput(wallet, Kind.Bet));
@@ -199,11 +201,11 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
   test('PostgreSQL ledger insert failure rolls back the earlier wallet and transaction flushes', async () => {
     const wallet = await seedWallet(database);
     const input = wagerInput(wallet, Kind.Win);
-    // Restrict the injected trigger to this unique transaction in the disposable DB.
+    // Restrict the injected trigger to this unique fixture wallet in the disposable DB.
     await database.pool.query(`
       create function stage4_fail_ledger_insert() returns trigger language plpgsql as $$
       begin
-        if new.transaction_id = '${input.id}' then
+        if new.wallet_id = '${wallet.id}' then
           raise exception 'controlled ledger insert failure' using errcode = '23514';
         end if;
         return new;
@@ -214,8 +216,8 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('wager processing 
     try {
       await expect(useCase.execute(input)).rejects.toThrow('controlled ledger insert failure');
       await expectWalletState(database, wallet, '100.00', 1);
-      expect(await loadTransaction(database, input.id)).toBeUndefined();
-      expect((await loadLedger(database, input.id)).rows).toHaveLength(0);
+      expect(await loadTransaction(database, input)).toBeUndefined();
+      expect((await loadLedger(database, input)).rows).toHaveLength(0);
     } finally {
       await database.pool.query('drop trigger stage4_fail_ledger_insert on wallet_ledger_entries');
       await database.pool.query('drop function stage4_fail_ledger_insert()');

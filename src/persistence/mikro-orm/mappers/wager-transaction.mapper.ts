@@ -1,8 +1,25 @@
 import { Money } from '../../../shared/domain/value-objects/money.js';
 import { WagerTransaction } from '../../../wagering/domain/wager-transaction.js';
 import { WagerTransactionEntity } from '../entities/wager-transaction.entity.js';
+import type { WagerResultSnapshot } from '../../../wagering/application/wager-result-snapshot.js';
 
 export class WagerTransactionMapper {
+  static toResultSnapshot(entity: WagerTransactionEntity): WagerResultSnapshot | undefined {
+    if (entity.resultBalanceAmount === null || entity.resultBalanceCurrency === null || entity.resultWalletVersion === null) {
+      return undefined;
+    }
+    return {
+      balance: Money.from({ amount: entity.resultBalanceAmount, currency: entity.resultBalanceCurrency }),
+      walletVersion: entity.resultWalletVersion,
+    };
+  }
+
+  static applyResultSnapshot(snapshot: WagerResultSnapshot, target: WagerTransactionEntity): void {
+    target.resultBalanceAmount = snapshot.balance.toJSON().amount;
+    target.resultBalanceCurrency = snapshot.balance.currency;
+    target.resultWalletVersion = snapshot.walletVersion;
+  }
+
   static toDomain(entity: WagerTransactionEntity): WagerTransaction {
     return WagerTransaction.rehydrate({
       id: entity.id,
