@@ -8,6 +8,7 @@ import { WagerTransactionEntity } from '../../src/persistence/mikro-orm/entities
 import { WalletLedgerEntryEntity } from '../../src/persistence/mikro-orm/entities/wallet-ledger-entry.entity.js';
 import { createMikroOrmOptions } from '../../src/persistence/mikro-orm/mikro-orm.options.js';
 import { InboxMessageEntity } from '../../src/persistence/mikro-orm/entities/inbox-message.entity.js';
+import { OutboxMessageEntity } from '../../src/persistence/mikro-orm/entities/outbox-message.entity.js';
 
 export interface WagerProcessingDatabase {
   orm: MikroORM;
@@ -74,6 +75,7 @@ export async function createWagerProcessingDatabase(
         WagerTransactionEntity,
         WalletLedgerEntryEntity,
         InboxMessageEntity,
+        OutboxMessageEntity,
       ],
       entitiesTs: [],
       migrations: { ...options.migrations, snapshot: false },

@@ -1,3 +1,4 @@
+import type { SNSClient } from '@aws-sdk/client-sns';
 import type { SQSClient } from '@aws-sdk/client-sqs';
 import { Module } from '@nestjs/common';
 
@@ -5,11 +6,14 @@ import {
   applicationConfiguration,
   type ApplicationConfiguration,
 } from '../config/application.config.js';
-import { SQS_CLIENT } from '../messaging/aws/aws.constants.js';
+import { SNS_CLIENT, SQS_CLIENT } from '../messaging/aws/aws.constants.js';
 import { AwsModule } from '../messaging/aws/aws.module.js';
 import { MessageFailureClassifier } from '../messaging/sqs/message-failure.classifier.js';
 import { ProcessWagerSqsMessageUseCase } from '../messaging/sqs/process-wager-sqs-message.use-case.js';
 import { WagerTransactionSqsConsumer } from '../messaging/sqs/wager-transaction-sqs.consumer.js';
+import { IntegrationEventPublisher } from '../messaging/outbox/application/integration-event.publisher.js';
+import { OutboxPublisherWorker } from '../messaging/outbox/application/outbox-publisher.worker.js';
+import { SnsIntegrationEventPublisher } from '../messaging/outbox/infrastructure/sns-integration-event.publisher.js';
 import { PersistenceModule } from '../persistence/mikro-orm/persistence.module.js';
 import { ClaimedWagerTransactionProcessor } from './application/claimed-wager-transaction.processor.js';
 import { PendingReferenceRetryPolicy } from './application/pending-reference-retry-policy.js';
@@ -94,12 +98,43 @@ import { PendingReferenceScheduler } from './pending-reference.scheduler.js';
         ),
     },
     PendingReferenceScheduler,
+    {
+      provide: IntegrationEventPublisher,
+      inject: [SNS_CLIENT, applicationConfiguration.KEY],
+      useFactory: (
+        snsClient: SNSClient,
+        configuration: ApplicationConfiguration,
+      ) => new SnsIntegrationEventPublisher(
+        snsClient,
+        configuration.aws.integrationEventsTopicArn,
+      ),
+    },
+    {
+      provide: OutboxPublisherWorker,
+      inject: [
+        WagerProcessingPersistence,
+        IntegrationEventPublisher,
+        applicationConfiguration.KEY,
+      ],
+      useFactory: (
+        persistence: WagerProcessingPersistence,
+        publisher: IntegrationEventPublisher,
+        configuration: ApplicationConfiguration,
+      ) => new OutboxPublisherWorker(persistence, publisher, {
+        enabled: configuration.workers.outboxPublisherEnabled,
+        batchSize: configuration.workers.outboxBatchSize,
+        pollIntervalMs: configuration.workers.outboxPollIntervalMs,
+        retryBaseMs: configuration.workers.outboxRetryBaseMs,
+        retryMaxMs: configuration.workers.outboxRetryMaxMs,
+      }),
+    },
   ],
   exports: [
     ProcessWagerTransactionUseCase,
     ProcessWagerSqsMessageUseCase,
     PendingReferenceWorker,
     WagerTransactionSqsConsumer,
+    OutboxPublisherWorker,
   ],
 })
 export class WageringModule {}

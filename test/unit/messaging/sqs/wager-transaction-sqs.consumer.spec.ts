@@ -64,6 +64,9 @@ function configuration(
       referenceTtlMs: 1,
       outboxBatchSize: 1,
       outboxPollIntervalMs: 1,
+      outboxPublisherEnabled: false,
+      outboxRetryBaseMs: 1,
+      outboxRetryMaxMs: 1,
     },
   };
 }

@@ -14,6 +14,7 @@ import { MikroOrmWagerTransactionRepository } from './repositories/mikro-orm-wag
 import { MikroOrmWalletLedgerEntryRepository } from './repositories/mikro-orm-wallet-ledger-entry.repository.js';
 import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.repository.js';
 import { MikroOrmInboxMessageRepository } from './repositories/mikro-orm-inbox-message.repository.js';
+import { MikroOrmOutboxMessageRepository } from './repositories/mikro-orm-outbox-message.repository.js';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { MikroOrmInboxMessageRepository } from './repositories/mikro-orm-inbox-m
     MikroOrmWagerTransactionRepository,
     MikroOrmWalletLedgerEntryRepository,
     MikroOrmInboxMessageRepository,
+    MikroOrmOutboxMessageRepository,
   ],
   exports: [
     WagerProcessingPersistence,
@@ -41,6 +43,7 @@ import { MikroOrmInboxMessageRepository } from './repositories/mikro-orm-inbox-m
     MikroOrmWagerTransactionRepository,
     MikroOrmWalletLedgerEntryRepository,
     MikroOrmInboxMessageRepository,
+    MikroOrmOutboxMessageRepository,
   ],
 })
 export class PersistenceModule {}

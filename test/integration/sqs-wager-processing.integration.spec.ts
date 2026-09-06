@@ -272,6 +272,14 @@ describe.skipIf(!shouldRun)('SQS Inbox processing with real PostgreSQL and Local
       expect(inbox.rows[0]?.processed_at).toBeInstanceOf(Date);
       await expectWalletState(database, wallet, '75.00', 2);
       expect((await loadLedger(database, input)).rows).toHaveLength(1);
+      const outbox = await database.pool.query(
+        `select event_type from outbox_messages
+         where payload->'data'->>'transactionId' = (
+           select id from wager_transactions where idempotency_key = $1
+         )`,
+        [input.idempotencyKey],
+      );
+      expect(outbox.rows).toHaveLength(2);
       expect(await receiveOne(sqs, queues.sourceUrl)).toBeUndefined();
   }, 20_000);
 
@@ -311,13 +319,15 @@ describe.skipIf(!shouldRun)('SQS Inbox processing with real PostgreSQL and Local
       const counts = await database.pool.query<{
         inbox_count: string;
         wager_count: string;
+        outbox_count: string;
       }>(
         `select
           (select count(*) from inbox_messages where message_id = $1)::text as inbox_count,
-          (select count(*) from wager_transactions where idempotency_key = $2)::text as wager_count`,
-        ['msg-crash', input.idempotencyKey],
+          (select count(*) from wager_transactions where idempotency_key = $2)::text as wager_count,
+          (select count(*) from outbox_messages where payload->'data'->>'transactionId' = $3)::text as outbox_count`,
+        ['msg-crash', input.idempotencyKey, committed.outcome === 'PROCESSED' ? committed.financialResult.transactionId : ''],
       );
-      expect(counts.rows[0]).toEqual({ inbox_count: '1', wager_count: '1' });
+      expect(counts.rows[0]).toEqual({ inbox_count: '1', wager_count: '1', outbox_count: '2' });
       expect(await receiveOne(sqs, queues.sourceUrl)).toBeUndefined();
   }, 20_000);
 
@@ -411,6 +421,14 @@ describe.skipIf(!shouldRun)('SQS Inbox processing with real PostgreSQL and Local
       expect(await receiveOne(sqs, queues.dlqUrl)).toBeUndefined();
       await expectWalletState(database, wallet, '75.00', 2);
       expect((await loadLedger(database, original)).rows).toHaveLength(1);
+      const outbox = await database.pool.query(
+        `select event_type from outbox_messages
+         where payload->'data'->>'transactionId' = (
+           select id from wager_transactions where idempotency_key = $1
+         )`,
+        [original.idempotencyKey],
+      );
+      expect(outbox.rows).toHaveLength(2);
   }, 20_000);
 
   test('failure after every financial flush rolls back Inbox and finance, then real redelivery succeeds', async () => {
@@ -473,11 +491,26 @@ describe.skipIf(!shouldRun)('SQS Inbox processing with real PostgreSQL and Local
           [input.idempotencyKey],
         ),
       ).toMatchObject({ rowCount: 0 });
+      expect(
+        await database.pool.query(
+          `select 1 from outbox_messages
+           where payload->'data'->>'externalTransactionId' = $1`,
+          [input.payload.externalTransactionId],
+        ),
+      ).toMatchObject({ rowCount: 0 });
       await expectWalletState(database, wallet, '100.00', 1);
 
       expect(await consumer.pollOnce()).toBe(1);
       await expectWalletState(database, wallet, '75.00', 2);
       expect((await loadLedger(database, input)).rows).toHaveLength(1);
+      const outbox = await database.pool.query(
+        `select event_type from outbox_messages
+         where payload->'data'->>'transactionId' = (
+           select id from wager_transactions where idempotency_key = $1
+         )`,
+        [input.idempotencyKey],
+      );
+      expect(outbox.rows).toHaveLength(2);
   }, 20_000);
 
   test('malformed JSON moves immediately through real SendMessage/DeleteMessage to DLQ', async () => {
