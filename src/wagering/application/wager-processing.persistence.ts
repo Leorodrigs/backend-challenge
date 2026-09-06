@@ -5,6 +5,7 @@ import type { PendingReferenceWork, StoredWagerResult, WagerResultSnapshot } fro
 import type { PendingReferenceRetryState } from './pending-reference-retry-policy.js';
 import type { WagerTransactionKind } from '../domain/wager-transaction-kind.js';
 import type { InboxMessage } from '../../messaging/inbox/domain/inbox-message.js';
+import type { OutboxMessage } from '../../messaging/outbox/domain/outbox-message.js';
 
 export interface WagerProcessingContext {
   inbox?: {
@@ -37,6 +38,11 @@ export interface WagerProcessingContext {
     findByWalletAndTransactionId(
       walletId: string, transactionId: string,
     ): Promise<WalletLedgerEntry | undefined>;
+  };
+  outbox: {
+    append(message: OutboxMessage): Promise<void>;
+    claimNextDue(now: Date): Promise<OutboxMessage | undefined>;
+    save(message: OutboxMessage): Promise<void>;
   };
 }
 

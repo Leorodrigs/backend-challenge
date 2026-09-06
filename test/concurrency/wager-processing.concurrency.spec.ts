@@ -187,6 +187,15 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('pessimistic wager
     expect(allEntries.rows).toHaveLength(2);
     expect(allEntries.rows.filter(({ direction }) => direction === LedgerDirection.Credit)).toHaveLength(1);
     expect(allEntries.rows.filter(({ direction }) => direction === LedgerDirection.Debit)).toHaveLength(1);
+    const outbox = await database.pool.query<{ event_type: string }>(
+      `select event_type from outbox_messages
+       where payload->'data'->>'transactionId' = $1 order by event_type`,
+      [winner.transactionId],
+    );
+    expect(outbox.rows).toEqual([
+      { event_type: 'WagerTransactionProcessed' },
+      { event_type: 'WalletBalanceChanged' },
+    ]);
     const loaded = await expectWalletState(database, wallet, '75.00', 2);
     console.info('50-request idempotency evidence:', JSON.stringify({
       calls: settled.length, fulfilled: fulfilled.length, rejected: rejected.length,
@@ -344,6 +353,17 @@ describe.skipIf(process.env.RUN_INTEGRATION_TESTS !== 'true')('pessimistic wager
     );
     expect(allEntries.rows).toHaveLength(2); // opening CREDIT and one BET DEBIT
     expect(allEntries.rows.filter((entry) => entry.direction === LedgerDirection.Debit)).toHaveLength(1);
+    const outbox = await database.pool.query<{ event_type: string }>(
+      `select event_type from outbox_messages
+       where payload->'data'->>'transactionId' in ($1, $2)
+       order by event_type`,
+      [transactionA?.id, transactionB?.id],
+    );
+    expect(outbox.rows).toEqual([
+      { event_type: 'WagerTransactionProcessed' },
+      { event_type: 'WagerTransactionRejected' },
+      { event_type: 'WalletBalanceChanged' },
+    ]);
     expect(queries.some((sql) => /select .*wallets.*where .*id.*for update/i.test(sql))).toBe(true);
     console.info('Observed PostgreSQL lock wait:', JSON.stringify(observed));
   }, 15_000);

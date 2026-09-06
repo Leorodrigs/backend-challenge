@@ -35,6 +35,9 @@ services:
       REFERENCE_TTL_MS: 86400000
       OUTBOX_BATCH_SIZE: 100
       OUTBOX_POLL_INTERVAL_MS: 1000
+      OUTBOX_PUBLISHER_ENABLED: "true"
+      OUTBOX_RETRY_BASE_MS: 1000
+      OUTBOX_RETRY_MAX_MS: 60000
     ports:
       - "${PORT:-3000}:3000"
     depends_on:

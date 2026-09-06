@@ -13,10 +13,15 @@ import { PendingReferenceRetryPolicy } from './pending-reference-retry-policy.js
 import type { ProcessWagerTransactionResult } from './process-wager-transaction.use-case.js';
 import type { WagerProcessingContext } from './wager-processing.persistence.js';
 import type { PendingReferenceWork } from './wager-result-snapshot.js';
+import { OutboxMessage } from '../../messaging/outbox/domain/outbox-message.js';
+import { WagerIntegrationEventFactory } from './wager-integration-event.factory.js';
 
 // Runs only inside the caller's SQL transaction, after a new claim or a pending row lock.
 export class ClaimedWagerTransactionProcessor {
-  constructor(private readonly retryPolicy = new PendingReferenceRetryPolicy()) {}
+  constructor(
+    private readonly retryPolicy = new PendingReferenceRetryPolicy(),
+    private readonly eventFactory = new WagerIntegrationEventFactory(),
+  ) {}
 
   async process(
     context: WagerProcessingContext,
@@ -25,6 +30,7 @@ export class ClaimedWagerTransactionProcessor {
     now?: Date,
   ): Promise<ProcessWagerTransactionResult> {
     const { wallets, transactions, ledger } = context;
+    const previousStatus = transaction.status;
     const wallet = await wallets.findByIdForUpdate(transaction.walletId);
     if (wallet === undefined) throw new WalletNotFoundError(transaction.walletId);
     if (wallet.playerId !== transaction.playerId) throw new WalletPlayerMismatchError(wallet.id);
@@ -93,6 +99,16 @@ export class ClaimedWagerTransactionProcessor {
     if (entry !== undefined) {
       await wallets.save(wallet);
       await ledger.append(entry);
+    }
+    const events = this.eventFactory.createForTransition({
+      transaction,
+      wallet,
+      previousStatus,
+      decidedAt: processedAt,
+      ...(entry === undefined ? {} : { ledgerEntry: entry }),
+    });
+    for (const event of events) {
+      await context.outbox.append(OutboxMessage.enqueue(event));
     }
     return {
       transactionId: transaction.id, status: transaction.status, ...snapshot,

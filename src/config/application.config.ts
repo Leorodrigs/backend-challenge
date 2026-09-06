@@ -40,6 +40,9 @@ export interface ApplicationConfiguration {
     referenceTtlMs: number;
     outboxBatchSize: number;
     outboxPollIntervalMs: number;
+    outboxPublisherEnabled: boolean;
+    outboxRetryBaseMs: number;
+    outboxRetryMaxMs: number;
   };
 }
 
@@ -194,6 +197,24 @@ export function parseEnvironment(
     );
   }
 
+  const outboxRetryBaseMs = optionalIntegerInRange(
+    environment,
+    'OUTBOX_RETRY_BASE_MS',
+    1,
+    86_400_000,
+    1_000,
+  );
+  const outboxRetryMaxMs = optionalIntegerInRange(
+    environment,
+    'OUTBOX_RETRY_MAX_MS',
+    1,
+    86_400_000,
+    60_000,
+  );
+  if (outboxRetryBaseMs > outboxRetryMaxMs) {
+    throw new Error('OUTBOX_RETRY_BASE_MS must not exceed OUTBOX_RETRY_MAX_MS');
+  }
+
   const sqsRetryBaseSeconds = optionalIntegerInRange(
     environment,
     'SQS_RETRY_BASE_SECONDS',
@@ -313,6 +334,13 @@ export function parseEnvironment(
         1,
         86_400_000,
       ),
+      outboxPublisherEnabled: optionalBoolean(
+        environment,
+        'OUTBOX_PUBLISHER_ENABLED',
+        environment.NODE_ENV !== 'test',
+      ),
+      outboxRetryBaseMs,
+      outboxRetryMaxMs,
     },
   };
 }

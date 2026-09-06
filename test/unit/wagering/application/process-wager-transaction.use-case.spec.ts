@@ -31,6 +31,7 @@ import type {
 import { WagerPayloadHasher } from '../../../../src/wagering/application/wager-payload-hasher.js';
 import type { WagerBusinessPayload } from '../../../../src/wagering/application/wager-business-payload.js';
 import type { StoredWagerResult, WagerResultSnapshot } from '../../../../src/wagering/application/wager-result-snapshot.js';
+import type { OutboxMessage } from '../../../../src/messaging/outbox/domain/outbox-message.js';
 
 function withPayload(input: ProcessWagerTransactionInput, changes: Partial<WagerBusinessPayload>): ProcessWagerTransactionInput {
   return { ...input, payload: { ...input.payload, ...changes } };
@@ -59,6 +60,11 @@ function setup(balance = '100.00') {
     ledger: {
       append: mock(async (_entry: WalletLedgerEntry): Promise<void> => {}),
       findByWalletAndTransactionId: mock(async (_wallet: string, _transaction: string): Promise<WalletLedgerEntry | undefined> => undefined),
+    },
+    outbox: {
+      append: mock(async (_message: OutboxMessage) => {}),
+      claimNextDue: mock(async () => undefined),
+      save: mock(async () => {}),
     },
   } satisfies WagerProcessingContext;
   const persistence: WagerProcessingPersistence = {
@@ -102,6 +108,10 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(context.wallets.save).toHaveBeenCalledWith(wallet);
     expect(context.transactions.saveStateAndResult).toHaveBeenCalledTimes(1);
     expect(context.ledger.append).toHaveBeenCalledTimes(1);
+    expect(context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
+    ]);
     expect(result.status).toBe(Status.Processed);
     expect(transaction?.id).toBe(result.transactionId);
     expect(result.idempotentReplay).toBe(false);
@@ -132,6 +142,9 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.walletVersion).toBe(1);
     expect(wallet.updatedAt).toEqual(openedAt);
     expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].money).toBe(input.payload.money);
+    expect(context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionProcessed',
+    ]);
     expectNoWalletWrites(context);
   });
 
@@ -146,6 +159,9 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(wallet.updatedAt).toEqual(openedAt);
     expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].status).toBe(Status.Rejected);
     expect(context.transactions.saveStateAndResult.mock.calls[0]?.[0].processedAt).toBeUndefined();
+    expect(context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionRejected',
+    ]);
     expectNoWalletWrites(context);
   });
 
@@ -197,6 +213,9 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.ledgerEntryId).toBeUndefined();
     expect(wallet.updatedAt).toEqual(openedAt);
     expect(context.transactions.saveStateAndResult).toHaveBeenCalledTimes(1);
+    expect(context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionProcessed',
+    ]);
     expectNoWalletWrites(context);
   });
 
@@ -277,6 +296,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     context.wallets.save.mockClear();
     context.ledger.append.mockClear();
     context.transactions.saveStateAndResult.mockClear();
+    const originalOutboxCount = context.outbox.append.mock.calls.length;
     const debit = spyOn(wallet, 'debit');
     const credit = spyOn(wallet, 'credit');
     try {
@@ -287,6 +307,7 @@ describe('ProcessWagerTransactionUseCase', () => {
       expect(debit).not.toHaveBeenCalled();
       expect(credit).not.toHaveBeenCalled();
       expectNoWalletWrites(context);
+      expect(context.outbox.append).toHaveBeenCalledTimes(originalOutboxCount);
       const candidates = context.transactions.tryClaim.mock.calls.map(([candidate]) => candidate);
       expect(new Set(candidates.map(({ id }) => id)).size).toBe(2);
       expect(candidates[0]?.payloadHash).toBe(candidates[1]?.payloadHash);

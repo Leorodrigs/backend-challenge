@@ -49,6 +49,9 @@ describe('application configuration', () => {
     expect(configuration.aws.sqsConsumerName).toBe('wager-transactions-v1');
     expect(configuration.aws.sqsMaxReceiveAttempts).toBe(5);
     expect(configuration.workers.outboxBatchSize).toBe(100);
+    expect(configuration.workers.outboxPublisherEnabled).toBe(false);
+    expect(configuration.workers.outboxRetryBaseMs).toBe(1_000);
+    expect(configuration.workers.outboxRetryMaxMs).toBe(60_000);
   });
 
   test('fails fast when a required variable is absent', () => {
@@ -101,6 +104,22 @@ describe('application configuration', () => {
     ).toThrow(
       'SQS_RETRY_BASE_SECONDS must not exceed SQS_RETRY_MAX_SECONDS',
     );
+  });
+
+  test('validates Outbox publisher enablement and retry range', () => {
+    expect(() =>
+      parseEnvironment({
+        ...validEnvironment,
+        OUTBOX_PUBLISHER_ENABLED: 'yes',
+      }),
+    ).toThrow('Environment variable OUTBOX_PUBLISHER_ENABLED must be true or false');
+    expect(() =>
+      parseEnvironment({
+        ...validEnvironment,
+        OUTBOX_RETRY_BASE_MS: '60001',
+        OUTBOX_RETRY_MAX_MS: '60000',
+      }),
+    ).toThrow('OUTBOX_RETRY_BASE_MS must not exceed OUTBOX_RETRY_MAX_MS');
   });
 
 });

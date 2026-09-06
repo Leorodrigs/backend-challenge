@@ -10,6 +10,7 @@ import { MikroOrmWagerTransactionRepository } from './repositories/mikro-orm-wag
 import { MikroOrmWalletLedgerEntryRepository } from './repositories/mikro-orm-wallet-ledger-entry.repository.js';
 import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.repository.js';
 import { MikroOrmInboxMessageRepository } from './repositories/mikro-orm-inbox-message.repository.js';
+import { MikroOrmOutboxMessageRepository } from './repositories/mikro-orm-outbox-message.repository.js';
 
 @Injectable()
 export class MikroOrmWagerProcessingPersistence extends WagerProcessingPersistence {
@@ -34,6 +35,9 @@ export class MikroOrmWagerProcessingPersistence extends WagerProcessingPersisten
           transactionalEntityManager,
         ),
         ledger: new MikroOrmWalletLedgerEntryRepository(
+          transactionalEntityManager,
+        ),
+        outbox: new MikroOrmOutboxMessageRepository(
           transactionalEntityManager,
         ),
       }),

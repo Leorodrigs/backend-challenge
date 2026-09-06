@@ -37,6 +37,7 @@ lock/read Inbox existente, quando houver
 claim WagerTransaction
 lock Wallet
 persist WagerTransaction + Wallet + Ledger
+persist OutboxMessage(s)
 mark Inbox processed
 COMMIT
 DeleteMessage (ACK)
@@ -48,7 +49,7 @@ segunda transação. Em conflito de inserção, o Inbox existente é carregado c
 `FOR UPDATE`. Mesmo hash com `processed_at` retorna duplicata sem adquirir lock
 financeiro; hash diferente gera `InboxPayloadConflictError` e DLQ.
 
-Uma falha antes do commit reverte Inbox, wager, wallet e ledger. Uma falha ou
+Uma falha antes do commit reverte Inbox, wager, wallet, ledger e outbox. Uma falha ou
 crash depois do commit e antes do ACK deixa a entrega reaparecer; a nova entrega
 encontra o Inbox processado, não repete finanças e tenta o ACK novamente.
 

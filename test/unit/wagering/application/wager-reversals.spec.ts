@@ -15,6 +15,7 @@ import { ProcessWagerTransactionUseCase } from '../../../../src/wagering/applica
 import type { WagerProcessingContext, WagerProcessingPersistence } from '../../../../src/wagering/application/wager-processing.persistence.js';
 import type { PendingReferenceWork, StoredWagerResult, WagerResultSnapshot } from '../../../../src/wagering/application/wager-result-snapshot.js';
 import { WagerPayloadHasher } from '../../../../src/wagering/application/wager-payload-hasher.js';
+import type { OutboxMessage } from '../../../../src/messaging/outbox/domain/outbox-message.js';
 
 const now = new Date('2026-09-05T12:00:00Z');
 const money = (amount: string, currency = 'BRL') => Money.from({ amount, currency });
@@ -52,6 +53,11 @@ function setup(kind = Kind.Refund, balance = '100.00', policy = new PendingRefer
     ledger: {
       append: mock(async (_entry: WalletLedgerEntry) => {}),
       findByWalletAndTransactionId: mock(async (_wallet: string, _id: string): Promise<WalletLedgerEntry | undefined> => undefined),
+    },
+    outbox: {
+      append: mock(async (_message: OutboxMessage) => {}),
+      claimNextDue: mock(async () => undefined),
+      save: mock(async () => {}),
     },
   } satisfies WagerProcessingContext;
   const persistence: WagerProcessingPersistence = { transactional: async (work) => work(context) };
@@ -102,6 +108,9 @@ describe('reversals under the wallet lock', () => {
     expect(result.walletVersion).toBe(1);
     expect(s.context.wallets.save).not.toHaveBeenCalled();
     expect(s.context.ledger.append).not.toHaveBeenCalled();
+    expect(s.context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionRejected',
+    ]);
     expect(s.context.transactions.hasProcessedReversal).not.toHaveBeenCalled();
   });
 
@@ -155,6 +164,9 @@ describe('reversals under the wallet lock', () => {
     expect(result.walletVersion).toBe(1);
     expect(s.context.wallets.save).not.toHaveBeenCalled();
     expect(s.context.ledger.append).not.toHaveBeenCalled();
+    expect(s.context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionRejected',
+    ]);
   });
 
   test.each([Kind.Refund, Kind.Rollback])('%s checks operation currency before resolving the reference', async (kind) => {
@@ -178,6 +190,9 @@ describe('pending reference worker and replay', () => {
     expect(result.walletVersion).toBe(1);
     expect(s.context.wallets.save).not.toHaveBeenCalled();
     expect(s.context.ledger.append).not.toHaveBeenCalled();
+    expect(s.context.outbox.append.mock.calls.map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionPendingReference',
+    ]);
   });
 
   test('pending replay performs no new resolution, job claim, financial lock or ledger read', async () => {
@@ -201,18 +216,21 @@ describe('pending reference worker and replay', () => {
     s.context.transactions.findByProviderAndExternalTransactionId.mockResolvedValue(undefined);
     const first = await s.process();
     const pending = s.pending();
+    const eventCount = s.context.outbox.append.mock.calls.length;
     s.wallet.credit(money('10.00'), now);
     s.context.transactions.claimNextPendingReference.mockResolvedValueOnce(pending);
     const results = await new PendingReferenceWorker(s.persistence, s.processor).runOnce(new Date(now.getTime() + 1_000), 1);
     expect(results).toEqual([first]);
     expect(s.pending().retryState).toEqual({ attemptCount: 2, nextAttemptAt: new Date(now.getTime() + 3_000), deadlineAt: pending.retryState.deadlineAt });
     expect(s.context.transactions.tryClaim).not.toHaveBeenCalled();
+    expect(s.context.outbox.append).toHaveBeenCalledTimes(eventCount);
   });
 
   test('worker resolves the same transaction and clears scheduling, preserving audit attempts', async () => {
     const s = setup();
     s.context.transactions.findByProviderAndExternalTransactionId.mockResolvedValueOnce(undefined);
     await s.process();
+    const eventCount = s.context.outbox.append.mock.calls.length;
     s.context.transactions.claimNextPendingReference.mockResolvedValueOnce(s.pending());
     const results = await new PendingReferenceWorker(s.persistence, s.processor).runOnce(new Date(now.getTime() + 1_000), 1);
     expect(results[0]).toMatchObject({ transactionId: s.transaction.id, status: Status.Processed, walletVersion: 2 });
@@ -220,12 +238,17 @@ describe('pending reference worker and replay', () => {
     expect(s.pending().retryState).toEqual({ attemptCount: 1, nextAttemptAt: null, deadlineAt: null });
     expect(s.context.transactions.tryClaim).not.toHaveBeenCalled();
     expect(s.context.ledger.append).toHaveBeenCalledTimes(1);
+    expect(s.context.outbox.append.mock.calls.slice(eventCount).map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
+    ]);
   });
 
   test.each(['attempts', 'TTL'])('worker rejects on exhausted %s and snapshots the final wallet', async (reason) => {
     const s = setup(Kind.Refund, '100.00', new PendingReferenceRetryPolicy({ maxAttempts: 2, ttlMs: 5_000 }));
     s.context.transactions.findByProviderAndExternalTransactionId.mockResolvedValue(undefined);
     await s.process();
+    const eventCount = s.context.outbox.append.mock.calls.length;
     s.wallet.credit(money('10.00'), now);
     s.context.transactions.claimNextPendingReference.mockResolvedValueOnce(s.pending());
     const results = await new PendingReferenceWorker(s.persistence, s.processor).runOnce(new Date(now.getTime() + (reason === 'TTL' ? 5_000 : 1_000)), 1);
@@ -233,6 +256,9 @@ describe('pending reference worker and replay', () => {
     expect(results[0]?.balance.toJSON().amount).toBe('110.00');
     expect(s.pending().retryState).toEqual({ attemptCount: reason === 'TTL' ? 1 : 2, nextAttemptAt: null, deadlineAt: null });
     expect(s.context.ledger.append).not.toHaveBeenCalled();
+    expect(s.context.outbox.append.mock.calls.slice(eventCount).map(([message]) => message.eventType)).toEqual([
+      'WagerTransactionRejected',
+    ]);
   });
 
   test('local overlapping iteration is skipped; infrastructure error propagates and allows a later iteration', async () => {

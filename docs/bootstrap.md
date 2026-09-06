@@ -44,6 +44,17 @@ A migration da Etapa 7 acrescenta `inbox_messages`. O consumer real de
 de recebimentos e grace period estão documentadas em `.env.example`; a
 semântica completa está em `docs/sqs-processing.md`.
 
+A migration da Etapa 8 acrescenta `outbox_messages`, seus checks de estado e o
+índice parcial de mensagens pendentes. O `OutboxPublisherWorker` inicia junto
+com o NestJS quando `OUTBOX_PUBLISHER_ENABLED=true`, reclama uma row por
+transação com `FOR UPDATE SKIP LOCKED` e publica no tópico configurado por
+`INTEGRATION_EVENTS_TOPIC_ARN`. `OUTBOX_BATCH_SIZE` e
+`OUTBOX_POLL_INTERVAL_MS` controlam o loop; `OUTBOX_RETRY_BASE_MS` e
+`OUTBOX_RETRY_MAX_MS` controlam o backoff persistente. Em `NODE_ENV=test`, o
+auto-start do publisher fica desabilitado por padrão. O ciclo completo está em
+`docs/outbox-processing.md`; a fila `wager-integration-events-audit` valida o
+body raw publicado pelo SNS.
+
 ## Testes
 
 - `bun run test` ou `bun run test:unit`: testes rápidos da fundação;
