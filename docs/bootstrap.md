@@ -38,6 +38,12 @@ A migration da Etapa 3 cria `wallets`, `wager_transactions` e
 imutabilidade do ledger. Execute-a com `bun run migration:up` e consulte seu
 estado com `bun run migration:status`.
 
+A migration da Etapa 7 acrescenta `inbox_messages`. O consumer real de
+`wager-transactions.fifo` inicia junto com o NestJS quando
+`SQS_CONSUMER_ENABLED=true`. As configurações de polling, batch, retry, limite
+de recebimentos e grace period estão documentadas em `.env.example`; a
+semântica completa está em `docs/sqs-processing.md`.
+
 ## Testes
 
 - `bun run test` ou `bun run test:unit`: testes rápidos da fundação;

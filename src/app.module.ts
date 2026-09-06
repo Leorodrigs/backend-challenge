@@ -24,8 +24,8 @@ import { WageringModule } from './wagering/wagering.module.js';
     ObservabilityModule,
     ScheduleModule.forRoot(),
     PersistenceModule,
-    WageringModule,
     AwsModule,
+    WageringModule,
     HealthModule,
   ],
 })
