@@ -5,6 +5,7 @@ import { FailureCode } from '../domain/failure-code.js';
 import { WagerTransaction } from '../domain/wager-transaction.js';
 import { WagerTransactionKind } from '../domain/wager-transaction-kind.js';
 import { WagerTransactionStatus } from '../domain/wager-transaction-status.js';
+import { ClaimedWagerTransactionProcessor } from './claimed-wager-transaction.processor.js';
 import {
   ExternalTransactionConflictError,
   IdempotencyConflictError,
@@ -12,10 +13,12 @@ import {
   WagerClaimConflictError,
   WagerResultUnavailableError,
 } from './errors/wager-processing.errors.js';
-import type { WagerProcessingPersistence } from './wager-processing.persistence.js';
 import type { WagerBusinessPayload } from './wager-business-payload.js';
-import { ClaimedWagerTransactionProcessor } from './claimed-wager-transaction.processor.js';
 import { WagerPayloadHasher } from './wager-payload-hasher.js';
+import type {
+  WagerProcessingContext,
+  WagerProcessingPersistence,
+} from './wager-processing.persistence.js';
 
 export interface ProcessWagerTransactionInput {
   idempotencyKey: string;
@@ -43,6 +46,15 @@ export class ProcessWagerTransactionUseCase {
   async execute(
     input: ProcessWagerTransactionInput,
   ): Promise<ProcessWagerTransactionResult> {
+    return this.persistence.transactional((context) =>
+      this.executeInContext(context, input),
+    );
+  }
+
+  async executeInContext(
+    context: WagerProcessingContext,
+    input: ProcessWagerTransactionInput,
+  ): Promise<ProcessWagerTransactionResult> {
     if (
       input.payload.kind !== WagerTransactionKind.Bet &&
       input.payload.kind !== WagerTransactionKind.Win &&
@@ -61,49 +73,54 @@ export class ProcessWagerTransactionUseCase {
       createdAt: new Date(),
     });
 
-    return this.persistence.transactional(async (context) => {
-      const { transactions, ledger } = context;
-      if (!(await transactions.tryClaim(transaction))) {
-        const existing = await transactions.findByIdempotencyKey(
-          transaction.idempotencyKey,
-        );
-        if (existing !== undefined) {
-          const original = existing.transaction;
-          if (!original.matchesPayload(transaction.payloadHash)) {
-            throw new IdempotencyConflictError(transaction.idempotencyKey);
-          }
-          if (existing.snapshot === undefined) {
-            throw new WagerResultUnavailableError(original.id, original.status);
-          }
-          // A worker may commit after this read. Do not combine a pending snapshot
-          // with a ledger that only became visible in a later READ COMMITTED query.
-          const originalEntry = original.status === WagerTransactionStatus.Processed
-            ? await ledger.findByWalletAndTransactionId(original.walletId, original.id)
+    const { transactions, ledger } = context;
+    if (!(await transactions.tryClaim(transaction))) {
+      const existing = await transactions.findByIdempotencyKey(
+        transaction.idempotencyKey,
+      );
+      if (existing !== undefined) {
+        const original = existing.transaction;
+        if (!original.matchesPayload(transaction.payloadHash)) {
+          throw new IdempotencyConflictError(transaction.idempotencyKey);
+        }
+        if (existing.snapshot === undefined) {
+          throw new WagerResultUnavailableError(original.id, original.status);
+        }
+        // A worker may commit after this read. Do not combine a pending snapshot
+        // with a ledger that only became visible in a later READ COMMITTED query.
+        const originalEntry =
+          original.status === WagerTransactionStatus.Processed
+            ? await ledger.findByWalletAndTransactionId(
+                original.walletId,
+                original.id,
+              )
             : undefined;
-          return {
-            transactionId: original.id,
-            status: original.status,
-            ...existing.snapshot,
-            ...(original.failureCode === undefined
-              ? {}
-              : { failureCode: original.failureCode }),
-            ...(originalEntry === undefined
-              ? {}
-              : { ledgerEntryId: originalEntry.id }),
-            idempotentReplay: true,
-          };
-        }
-        const external = await transactions.findByProviderAndExternalTransactionId(
-          transaction.providerId, transaction.externalTransactionId,
-        );
-        if (external !== undefined) {
-          throw new ExternalTransactionConflictError(
-            transaction.providerId, transaction.externalTransactionId,
-          );
-        }
-        throw new WagerClaimConflictError();
+        return {
+          transactionId: original.id,
+          status: original.status,
+          ...existing.snapshot,
+          ...(original.failureCode === undefined
+            ? {}
+            : { failureCode: original.failureCode }),
+          ...(originalEntry === undefined
+            ? {}
+            : { ledgerEntryId: originalEntry.id }),
+          idempotentReplay: true,
+        };
       }
-      return this.processor.process(context, transaction);
-    });
+      const external =
+        await transactions.findByProviderAndExternalTransactionId(
+          transaction.providerId,
+          transaction.externalTransactionId,
+        );
+      if (external !== undefined) {
+        throw new ExternalTransactionConflictError(
+          transaction.providerId,
+          transaction.externalTransactionId,
+        );
+      }
+      throw new WagerClaimConflictError();
+    }
+    return this.processor.process(context, transaction);
   }
 }

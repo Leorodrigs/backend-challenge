@@ -25,6 +25,13 @@ export interface ApplicationConfiguration {
     wagerDlqUrl: string;
     sqsWaitTimeSeconds: number;
     sqsVisibilityTimeout: number;
+    sqsConsumerEnabled: boolean;
+    sqsConsumerName: string;
+    sqsMaxMessagesPerPoll: number;
+    sqsRetryBaseSeconds: number;
+    sqsRetryMaxSeconds: number;
+    sqsMaxReceiveAttempts: number;
+    sqsShutdownGraceMs: number;
     integrationEventsTopicArn: string;
   };
   workers: {
@@ -87,6 +94,31 @@ function integerInRange(
   }
 
   return value;
+}
+
+function optionalIntegerInRange(
+  environment: Record<string, unknown>,
+  name: string,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+): number {
+  if (environment[name] === undefined || environment[name] === '') {
+    return fallback;
+  }
+  return integerInRange(environment, name, minimum, maximum);
+}
+
+function optionalBoolean(
+  environment: Record<string, unknown>,
+  name: string,
+  fallback: boolean,
+): boolean {
+  const value = environment[name];
+  if (value === undefined || value === '') return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`Environment variable ${name} must be true or false`);
 }
 
 function validUrl(value: string, name: string): string {
@@ -162,6 +194,26 @@ export function parseEnvironment(
     );
   }
 
+  const sqsRetryBaseSeconds = optionalIntegerInRange(
+    environment,
+    'SQS_RETRY_BASE_SECONDS',
+    1,
+    43_200,
+    5,
+  );
+  const sqsRetryMaxSeconds = optionalIntegerInRange(
+    environment,
+    'SQS_RETRY_MAX_SECONDS',
+    1,
+    43_200,
+    300,
+  );
+  if (sqsRetryBaseSeconds > sqsRetryMaxSeconds) {
+    throw new Error(
+      'SQS_RETRY_BASE_SECONDS must not exceed SQS_RETRY_MAX_SECONDS',
+    );
+  }
+
   const endpoint =
     endpointValue === undefined
       ? undefined
@@ -203,6 +255,37 @@ export function parseEnvironment(
         'SQS_VISIBILITY_TIMEOUT',
         1,
         43_200,
+      ),
+      sqsConsumerEnabled: optionalBoolean(
+        environment,
+        'SQS_CONSUMER_ENABLED',
+        environment.NODE_ENV !== 'test',
+      ),
+      sqsConsumerName:
+        optionalString(environment, 'SQS_CONSUMER_NAME') ??
+        'wager-transactions-v1',
+      sqsMaxMessagesPerPoll: optionalIntegerInRange(
+        environment,
+        'SQS_MAX_MESSAGES_PER_POLL',
+        1,
+        10,
+        10,
+      ),
+      sqsRetryBaseSeconds,
+      sqsRetryMaxSeconds,
+      sqsMaxReceiveAttempts: optionalIntegerInRange(
+        environment,
+        'SQS_MAX_RECEIVE_ATTEMPTS',
+        1,
+        1_000,
+        5,
+      ),
+      sqsShutdownGraceMs: optionalIntegerInRange(
+        environment,
+        'SQS_SHUTDOWN_GRACE_MS',
+        1,
+        3_600_000,
+        10_000,
       ),
       integrationEventsTopicArn: requiredString(
         environment,

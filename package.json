@@ -19,7 +19,7 @@
     "test:unit": "bun test test/unit --pass-with-no-tests",
     "test:integration": "bun test test/integration --pass-with-no-tests",
     "test:concurrency": "bun test test/concurrency --pass-with-no-tests",
-    "test:all": "bun test"
+    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.1126.0",

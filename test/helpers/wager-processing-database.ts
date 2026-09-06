@@ -7,6 +7,7 @@ import { WalletEntity } from '../../src/persistence/mikro-orm/entities/wallet.en
 import { WagerTransactionEntity } from '../../src/persistence/mikro-orm/entities/wager-transaction.entity.js';
 import { WalletLedgerEntryEntity } from '../../src/persistence/mikro-orm/entities/wallet-ledger-entry.entity.js';
 import { createMikroOrmOptions } from '../../src/persistence/mikro-orm/mikro-orm.options.js';
+import { InboxMessageEntity } from '../../src/persistence/mikro-orm/entities/inbox-message.entity.js';
 
 export interface WagerProcessingDatabase {
   orm: MikroORM;
@@ -68,7 +69,12 @@ export async function createWagerProcessingDatabase(
     });
     orm = await MikroORM.init({
       ...options,
-      entities: [WalletEntity, WagerTransactionEntity, WalletLedgerEntryEntity],
+      entities: [
+        WalletEntity,
+        WagerTransactionEntity,
+        WalletLedgerEntryEntity,
+        InboxMessageEntity,
+      ],
       entitiesTs: [],
       migrations: { ...options.migrations, snapshot: false },
       debug: ['query'],

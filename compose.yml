@@ -22,6 +22,13 @@ services:
       WAGER_DLQ_URL: http://localstack:4566/queue/us-east-1/000000000000/wager-transactions-dlq.fifo
       SQS_WAIT_TIME_SECONDS: 20
       SQS_VISIBILITY_TIMEOUT: 30
+      SQS_CONSUMER_ENABLED: "true"
+      SQS_CONSUMER_NAME: wager-transactions-v1
+      SQS_MAX_MESSAGES_PER_POLL: 10
+      SQS_RETRY_BASE_SECONDS: 5
+      SQS_RETRY_MAX_SECONDS: 300
+      SQS_MAX_RECEIVE_ATTEMPTS: 5
+      SQS_SHUTDOWN_GRACE_MS: 10000
       INTEGRATION_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:wager-integration-events
       REFERENCE_RETRY_BASE_MS: 1000
       REFERENCE_RETRY_MAX_MS: 60000

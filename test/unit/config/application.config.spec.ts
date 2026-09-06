@@ -20,6 +20,13 @@ const validEnvironment: Record<string, string> = {
     'http://localhost:4566/queue/us-east-1/000000000000/wager-transactions-dlq.fifo',
   SQS_WAIT_TIME_SECONDS: '20',
   SQS_VISIBILITY_TIMEOUT: '30',
+  SQS_CONSUMER_ENABLED: 'true',
+  SQS_CONSUMER_NAME: 'wager-transactions-v1',
+  SQS_MAX_MESSAGES_PER_POLL: '10',
+  SQS_RETRY_BASE_SECONDS: '5',
+  SQS_RETRY_MAX_SECONDS: '300',
+  SQS_MAX_RECEIVE_ATTEMPTS: '5',
+  SQS_SHUTDOWN_GRACE_MS: '10000',
   INTEGRATION_EVENTS_TOPIC_ARN:
     'arn:aws:sns:us-east-1:000000000000:wager-integration-events',
   REFERENCE_RETRY_BASE_MS: '1000',
@@ -39,6 +46,8 @@ describe('application configuration', () => {
     });
     expect(configuration.database.port).toBe(5432);
     expect(configuration.aws.sqsWaitTimeSeconds).toBe(20);
+    expect(configuration.aws.sqsConsumerName).toBe('wager-transactions-v1');
+    expect(configuration.aws.sqsMaxReceiveAttempts).toBe(5);
     expect(configuration.workers.outboxBatchSize).toBe(100);
   });
 
@@ -72,6 +81,26 @@ describe('application configuration', () => {
 
     expect(configuration.aws.endpoint).toBeUndefined();
     expect(configuration.aws.accessKeyId).toBeUndefined();
+  });
+
+  test('rejects invalid consumer settings and a reversed retry range', () => {
+    expect(() =>
+      parseEnvironment({
+        ...validEnvironment,
+        SQS_MAX_MESSAGES_PER_POLL: '11',
+      }),
+    ).toThrow(
+      'Environment variable SQS_MAX_MESSAGES_PER_POLL must be between 1 and 10',
+    );
+    expect(() =>
+      parseEnvironment({
+        ...validEnvironment,
+        SQS_RETRY_BASE_SECONDS: '301',
+        SQS_RETRY_MAX_SECONDS: '300',
+      }),
+    ).toThrow(
+      'SQS_RETRY_BASE_SECONDS must not exceed SQS_RETRY_MAX_SECONDS',
+    );
   });
 
 });

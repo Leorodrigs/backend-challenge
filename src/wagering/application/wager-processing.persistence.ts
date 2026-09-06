@@ -4,8 +4,17 @@ import type { WalletLedgerEntry } from '../../wallet/domain/wallet-ledger-entry.
 import type { PendingReferenceWork, StoredWagerResult, WagerResultSnapshot } from './wager-result-snapshot.js';
 import type { PendingReferenceRetryState } from './pending-reference-retry-policy.js';
 import type { WagerTransactionKind } from '../domain/wager-transaction-kind.js';
+import type { InboxMessage } from '../../messaging/inbox/domain/inbox-message.js';
 
 export interface WagerProcessingContext {
+  inbox?: {
+    tryReceive(message: InboxMessage): Promise<boolean>;
+    findForUpdate(
+      consumerName: string,
+      messageId: string,
+    ): Promise<InboxMessage | undefined>;
+    save(message: InboxMessage): Promise<void>;
+  };
   wallets: {
     findByIdForUpdate(id: string): Promise<Wallet | undefined>;
     save(wallet: Wallet): Promise<void>;
