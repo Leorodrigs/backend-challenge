@@ -1,5 +1,6 @@
 import { describe, expect, mock, spyOn, test } from 'bun:test';
 
+import { ApplicationMetrics } from '../../../../src/observability/application-metrics.js';
 import { Money } from '../../../../src/shared/domain/value-objects/money.js';
 import { InsufficientFundsError } from '../../../../src/wallet/domain/errors/wallet.errors.js';
 import { LedgerDirection } from '../../../../src/wallet/domain/ledger-direction.js';
@@ -87,6 +88,37 @@ function expectNoWalletWrites(context: ReturnType<typeof setup>['context']): voi
 }
 
 describe('ProcessWagerTransactionUseCase', () => {
+  test('records latency and a sanitized structured outcome only after commit', async () => {
+    const state = setup();
+    const metrics = new ApplicationMetrics();
+    const log = mock((_fields: Record<string, unknown>) => {});
+    const useCase = new ProcessWagerTransactionUseCase(
+      state.persistence,
+      undefined,
+      metrics,
+      { log },
+    );
+
+    await useCase.execute(state.input);
+
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]?.[0]).toMatchObject({
+      walletId: state.input.payload.walletId,
+      providerId: state.input.payload.providerId,
+      kind: Kind.Bet,
+      status: Status.Processed,
+      idempotentReplay: false,
+      outcome: 'processed',
+    });
+    const serialized = JSON.stringify(log.mock.calls[0]?.[0]);
+    expect(serialized).not.toMatch(
+      /amount|balance|money|payload|idempotencyKey|authorization|cookie/i,
+    );
+    expect(await metrics.metrics()).toContain(
+      'wager_processing_duration_seconds_count{source="direct",outcome="processed"} 1',
+    );
+  });
+
   test.each([
     [Kind.Bet, 'debit', LedgerDirection.Debit, '75.00'],
     [Kind.Win, 'credit', LedgerDirection.Credit, '125.00'],

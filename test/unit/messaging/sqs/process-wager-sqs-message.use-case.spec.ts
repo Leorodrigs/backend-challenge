@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 
+import { ApplicationMetrics } from '../../../../src/observability/application-metrics.js';
 import { InboxMessage } from '../../../../src/messaging/inbox/domain/inbox-message.js';
 import { InboxEnvelopeHasher } from '../../../../src/messaging/sqs/inbox-envelope.hasher.js';
 import { ProcessWagerSqsMessageUseCase } from '../../../../src/messaging/sqs/process-wager-sqs-message.use-case.js';
@@ -33,7 +34,7 @@ const body = JSON.stringify({
   },
 });
 
-function setup(existing?: InboxMessage) {
+function setup(existing?: InboxMessage, metrics?: ApplicationMetrics) {
   const events: string[] = [];
   const saved: InboxMessage[] = [];
   const context = {
@@ -74,6 +75,9 @@ function setup(existing?: InboxMessage) {
     persistence,
     financial,
     'wager-transactions-v1',
+    undefined,
+    undefined,
+    metrics,
   );
   return { events, saved, context, executeInContext, useCase };
 }
@@ -105,6 +109,38 @@ describe('ProcessWagerSqsMessageUseCase', () => {
     expect(await useCase.execute(envelope)).toEqual({ outcome: 'DUPLICATE' });
     expect(executeInContext).not.toHaveBeenCalled();
     expect(events).toEqual(['begin', 'commit']);
+  });
+
+  test('counts Inbox and business duplicates only after their SQL boundary resolves', async () => {
+    const existing = InboxMessage.receive({
+      consumerName: 'wager-transactions-v1',
+      messageId: envelope.messageId,
+      payloadHash: new InboxEnvelopeHasher().hash(envelope),
+      receivedAt: new Date('2026-09-05T12:00:00.000Z'),
+    });
+    existing.markProcessed(new Date('2026-09-05T12:00:01.000Z'));
+    const metrics = new ApplicationMetrics();
+    await setup(existing, metrics).useCase.execute(envelope);
+
+    const business = setup(undefined, metrics);
+    business.executeInContext.mockResolvedValue({
+      transactionId: 'transaction',
+      status: WagerTransactionStatus.Processed,
+      balance: Money.from({ amount: '75.00', currency: 'BRL' }),
+      walletVersion: 2,
+      idempotentReplay: true,
+    });
+    await business.useCase.execute(envelope);
+
+    const body = await metrics.metrics();
+    expect(body).toContain('wager_duplicates_total{type="inbox"} 1');
+    expect(body).toContain('wager_duplicates_total{type="business"} 1');
+    expect(body).toContain(
+      'wager_processing_duration_seconds_count{source="sqs",outcome="duplicate"} 1',
+    );
+    expect(body).toContain(
+      'wager_processing_duration_seconds_count{source="sqs",outcome="replay"} 1',
+    );
   });
 
   test('business conflict marks Inbox processed and commits for ACK', async () => {

@@ -10,12 +10,14 @@ const suites = {
     'test/integration/wager-idempotency.integration.spec.ts',
     'test/integration/wager-processing.integration.spec.ts',
     'test/integration/wager-reversals.integration.spec.ts',
+    'test/integration/reconciliation-observability.integration.spec.ts',
   ],
   concurrency: [
     'test/concurrency/inbox-processing.concurrency.spec.ts',
     'test/concurrency/outbox-publisher.concurrency.spec.ts',
     'test/concurrency/wager-processing.concurrency.spec.ts',
     'test/concurrency/wager-reversals.concurrency.spec.ts',
+    'test/concurrency/reconciliation-observability.concurrency.spec.ts',
   ],
 };
 

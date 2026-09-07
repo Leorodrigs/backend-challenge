@@ -1,5 +1,6 @@
+import { EntityManager as EntityManagerToken } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import type { OutboxMessage } from '../../../messaging/outbox/domain/outbox-message.js';
 import { OutboxMessageEntity } from '../entities/outbox-message.entity.js';
@@ -7,7 +8,10 @@ import { OutboxMessageMapper } from '../mappers/outbox-message.mapper.js';
 
 @Injectable()
 export class MikroOrmOutboxMessageRepository {
-  constructor(private readonly entityManager: EntityManager) {}
+  constructor(
+    @Inject(EntityManagerToken)
+    private readonly entityManager: EntityManager,
+  ) {}
 
   async append(message: OutboxMessage): Promise<void> {
     this.assertTransaction();

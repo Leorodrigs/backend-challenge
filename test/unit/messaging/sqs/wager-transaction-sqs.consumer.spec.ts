@@ -12,6 +12,7 @@ import type { ApplicationConfiguration } from '../../../../src/config/applicatio
 import { MessageFailureClassifier } from '../../../../src/messaging/sqs/message-failure.classifier.js';
 import type { ProcessWagerSqsMessageUseCase } from '../../../../src/messaging/sqs/process-wager-sqs-message.use-case.js';
 import { WagerTransactionSqsConsumer } from '../../../../src/messaging/sqs/wager-transaction-sqs.consumer.js';
+import { ApplicationMetrics } from '../../../../src/observability/application-metrics.js';
 
 const body = JSON.stringify({
   messageId: 'msg-1',
@@ -88,6 +89,7 @@ function consumerWith(
   sendImplementation: (command: unknown) => Promise<unknown>,
   executeImplementation: () => Promise<unknown>,
   overrides: Partial<ApplicationConfiguration['aws']> = {},
+  metrics?: ApplicationMetrics,
 ) {
   const send = mock(sendImplementation);
   const execute = mock(executeImplementation);
@@ -96,6 +98,7 @@ function consumerWith(
     { execute } as unknown as ProcessWagerSqsMessageUseCase,
     new MessageFailureClassifier(),
     configuration(overrides),
+    metrics,
   );
   return { consumer, send, execute };
 }
@@ -119,11 +122,14 @@ describe('WagerTransactionSqsConsumer', () => {
   });
 
   test('transient failure changes visibility with exponential capped backoff and never ACKs', async () => {
+    const metrics = new ApplicationMetrics();
     const state = consumerWith(
       async () => ({}),
       async () => {
         throw new Error('database unavailable');
       },
+      {},
+      metrics,
     );
     const outcome = await state.consumer.handleMessage(
       delivery({ Attributes: { ApproximateReceiveCount: '2' } }),
@@ -136,6 +142,9 @@ describe('WagerTransactionSqsConsumer', () => {
     expect((commands[0] as ChangeMessageVisibilityCommand).input.VisibilityTimeout).toBe(6);
     expect(commands.some((command) => command instanceof DeleteMessageCommand)).toBe(false);
     expect(state.consumer.visibilityBackoffSeconds(10)).toBe(10);
+    expect(await metrics.metrics()).toContain(
+      'wager_retries_total{component="sqs"} 1',
+    );
   });
 
   test('permanent malformed body sends to FIFO DLQ before deleting source', async () => {
@@ -160,12 +169,15 @@ describe('WagerTransactionSqsConsumer', () => {
   });
 
   test('DLQ send failure preserves the source message', async () => {
+    const metrics = new ApplicationMetrics();
     const state = consumerWith(
       async (command) => {
         if (command instanceof SendMessageCommand) throw new Error('DLQ down');
         return {};
       },
       async () => ({ outcome: 'PROCESSED' }),
+      {},
+      metrics,
     );
 
     expect(
@@ -176,14 +188,20 @@ describe('WagerTransactionSqsConsumer', () => {
         ([command]) => command instanceof DeleteMessageCommand,
       ),
     ).toBe(false);
+    expect(await metrics.metrics()).not.toContain(
+      'wager_dlq_moves_total{reason="permanent"}',
+    );
   });
 
   test('retry exhaustion moves to DLQ instead of changing visibility', async () => {
+    const metrics = new ApplicationMetrics();
     const state = consumerWith(
       async () => ({}),
       async () => {
         throw new Error('still unavailable');
       },
+      {},
+      metrics,
     );
 
     expect(
@@ -199,6 +217,9 @@ describe('WagerTransactionSqsConsumer', () => {
         (command) => command instanceof ChangeMessageVisibilityCommand,
       ),
     ).toBe(false);
+    expect(await metrics.metrics()).toContain(
+      'wager_dlq_moves_total{reason="exhausted"} 1',
+    );
   });
 
   test('ACK failure leaves the committed message for Inbox-safe redelivery', async () => {

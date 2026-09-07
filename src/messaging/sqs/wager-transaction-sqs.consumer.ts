@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 
 import type { ApplicationConfiguration } from '../../config/application.config.js';
+import type { ApplicationMetrics } from '../../observability/application-metrics.js';
 import {
   MessageFailureAction,
   MessageFailureClassifier,
@@ -51,6 +52,7 @@ export class WagerTransactionSqsConsumer
     private readonly processMessage: ProcessWagerSqsMessageUseCase,
     private readonly failureClassifier: MessageFailureClassifier,
     private readonly configuration: ApplicationConfiguration,
+    private readonly metrics?: ApplicationMetrics,
   ) {}
 
   onModuleInit(): void {
@@ -114,7 +116,26 @@ export class WagerTransactionSqsConsumer
     try {
       envelope = this.parser.parse(message.Body);
       const result = await this.processMessage.execute(envelope);
-      this.log(result.outcome.toLowerCase(), message, receiveCount, envelope);
+      this.log(
+        result.outcome.toLowerCase(),
+        message,
+        receiveCount,
+        envelope,
+        undefined,
+        result.outcome === 'PROCESSED' &&
+        result.financialResult !== undefined
+          ? {
+              correlationId: result.financialResult.transactionId,
+              transactionId: result.financialResult.transactionId,
+              status: result.financialResult.status,
+              failureCode: result.financialResult.failureCode,
+              idempotentReplay: result.financialResult.idempotentReplay,
+              financialOutcome: result.financialResult.idempotentReplay
+                ? 'replay'
+                : result.financialResult.status.toLowerCase(),
+            }
+          : {},
+      );
       return await this.ack(message, envelope, receiveCount);
     } catch (error: unknown) {
       const action = this.failureClassifier.classify(error);
@@ -218,6 +239,7 @@ export class WagerTransactionSqsConsumer
           VisibilityTimeout: visibilityTimeout,
         }),
       );
+      this.metrics?.recordRetry('sqs');
       this.log(
         'retry_scheduled',
         message,
@@ -267,6 +289,9 @@ export class WagerTransactionSqsConsumer
             },
           },
         }),
+      );
+      this.metrics?.recordDlqMove(
+        failureCategory === 'permanent' ? 'permanent' : 'exhausted',
       );
     } catch (sendError: unknown) {
       this.log('dlq_send_failed', message, receiveCount, envelope, sendError);
@@ -430,16 +455,20 @@ export class WagerTransactionSqsConsumer
     error?: unknown,
     extra: Record<string, unknown> = {},
   ): void {
-    this.logger.log({
-      consumerName: this.configuration.aws.sqsConsumerName,
-      messageId: envelope?.messageId,
-      awsMessageId: message.MessageId,
-      walletId: envelope?.data.walletId,
-      providerId: envelope?.data.providerId,
-      receiveCount,
-      outcome,
-      ...(error instanceof Error ? { errorName: error.name } : {}),
-      ...extra,
-    });
+    try {
+      this.logger.log({
+        consumerName: this.configuration.aws.sqsConsumerName,
+        messageId: envelope?.messageId,
+        awsMessageId: message.MessageId,
+        walletId: envelope?.data.walletId,
+        providerId: envelope?.data.providerId,
+        receiveCount,
+        outcome,
+        ...(error instanceof Error ? { errorName: error.name } : {}),
+        ...extra,
+      });
+    } catch {
+      // Transport acknowledgement/retry semantics must not depend on logging.
+    }
   }
 }
