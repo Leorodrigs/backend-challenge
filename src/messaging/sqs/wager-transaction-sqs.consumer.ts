@@ -64,6 +64,10 @@ export class WagerTransactionSqsConsumer
     await this.shutdown();
   }
 
+  async beforeApplicationShutdown(): Promise<void> {
+    await this.shutdown();
+  }
+
   async pollOnce(): Promise<number> {
     if (this.stopping) return 0;
 

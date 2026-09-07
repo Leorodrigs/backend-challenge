@@ -256,16 +256,16 @@ describe.skipIf(!shouldRun)('financial persistence', () => {
       `select table_name
        from information_schema.tables
        where table_schema = 'public'
-         and table_name in ('wallets', 'wager_transactions', 'wallet_ledger_entries')`,
+         and table_name in ('wallets', 'wager_transactions', 'wallet_ledger_entries', 'inbox_messages', 'outbox_messages')`,
     );
-    migrationUpValidated = migratedTables.rowCount === 3;
+    migrationUpValidated = migratedTables.rowCount === 5;
 
     await activeMigrator.down({ to: 0 });
     const tablesAfterDown = await databasePool.query<{ table_name: string }>(
       `select table_name
        from information_schema.tables
        where table_schema = 'public'
-         and table_name in ('wallets', 'wager_transactions', 'wallet_ledger_entries')`,
+         and table_name in ('wallets', 'wager_transactions', 'wallet_ledger_entries', 'inbox_messages', 'outbox_messages')`,
     );
     migrationDownValidated = tablesAfterDown.rowCount === 0;
 

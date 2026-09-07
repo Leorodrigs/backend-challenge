@@ -33,7 +33,7 @@ describe('readiness health indicators', () => {
     const indicator = new PostgresHealthIndicator(orm, indicatorService());
 
     expect(await indicator.check()).toEqual({
-      postgres: { status: 'down', message: 'database unavailable' },
+      postgres: { status: 'down', message: 'PostgreSQL check failed' },
     });
     expect(execute).toHaveBeenCalledWith('select 1');
   });
@@ -53,7 +53,7 @@ describe('readiness health indicators', () => {
     );
 
     expect(await indicator.check()).toEqual({
-      sqs: { status: 'down', message: 'SQS unavailable' },
+      sqs: { status: 'down', message: 'SQS check failed' },
     });
   });
 });

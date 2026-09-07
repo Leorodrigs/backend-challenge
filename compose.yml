@@ -6,7 +6,7 @@ services:
       context: .
       target: runtime
     init: true
-    environment:
+    environment: &application-environment
       NODE_ENV: production
       PORT: 3000
       DATABASE_HOST: postgres
@@ -41,6 +41,8 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       localstack:
@@ -58,6 +60,17 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      target: runtime
+    environment: *application-environment
+    command: ["bun", "dist/migrate.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   postgres:
     image: postgres:18.6-alpine
@@ -96,7 +109,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "awslocal sqs list-queues >/dev/null 2>&1 && awslocal sns list-topics >/dev/null 2>&1",
+          "awslocal sqs get-queue-url --queue-name wager-transactions.fifo >/dev/null && awslocal sqs get-queue-url --queue-name wager-integration-events-audit >/dev/null && awslocal sns list-subscriptions | grep -q wager-integration-events",
         ]
       interval: 5s
       timeout: 5s

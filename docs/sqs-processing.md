@@ -1,7 +1,7 @@
-# Processamento SQS da Etapa 7
+# Processamento SQS
 
-O `README.md` da raiz continua sendo a especificação oficial. Este documento
-registra apenas as decisões operacionais da implementação da Etapa 7.
+Este documento descreve o contrato, a persistência e o ciclo de vida do consumer
+SQS.
 
 ## Contrato e identidade
 

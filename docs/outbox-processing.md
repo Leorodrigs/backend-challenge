@@ -1,7 +1,7 @@
 # Transactional Outbox e SNS
 
-O `README.md` da raiz permanece a especificação oficial. Este documento registra
-as decisões da Etapa 8.
+Este documento descreve a geração, persistência e publicação dos eventos de
+integração.
 
 ## Contratos dos eventos
 

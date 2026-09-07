@@ -1,4 +1,3 @@
-import { DecimalType } from '@mikro-orm/core';
 import {
   Check,
   Entity,
@@ -13,8 +12,10 @@ import {
 import { LedgerDirection } from '../../../wallet/domain/ledger-direction.js';
 import { WagerTransactionEntity } from './wager-transaction.entity.js';
 import { WalletEntity } from './wallet.entity.js';
+import { ExactDecimalType } from '../types/exact-decimal.type.js';
 
 @Entity({ tableName: 'wallet_ledger_entries' })
+@Check({ name: 'wallet_ledger_entries_finite_money_check', expression: "amount <> 'NaN'::numeric and balance_before <> 'NaN'::numeric and balance_after <> 'NaN'::numeric" })
 @Check({
   name: 'wallet_ledger_entries_id_not_blank_check',
   expression: 'length(id) > 0 and btrim(id) = id',
@@ -94,7 +95,7 @@ export class WalletLedgerEntryEntity {
   direction!: LedgerDirection;
 
   @Property({
-    type: new DecimalType('string'),
+    type: new ExactDecimalType(),
     columnType: 'numeric(20,2)',
   })
   amount!: string;
@@ -104,14 +105,14 @@ export class WalletLedgerEntryEntity {
 
   @Property({
     fieldName: 'balance_before',
-    type: new DecimalType('string'),
+    type: new ExactDecimalType(),
     columnType: 'numeric(20,2)',
   })
   balanceBefore!: string;
 
   @Property({
     fieldName: 'balance_after',
-    type: new DecimalType('string'),
+    type: new ExactDecimalType(),
     columnType: 'numeric(20,2)',
   })
   balanceAfter!: string;

@@ -8,13 +8,13 @@
     "bun": ">=1.0.0 <2.0.0"
   },
   "scripts": {
-    "build": "nest build",
+    "build": "bun node_modules/typescript/bin/tsc -p tsconfig.build.json --incremental false",
     "start": "bun dist/main.js",
     "start:dev": "bun --watch src/main.ts",
-    "migration:create": "mikro-orm migration:create",
-    "migration:up": "mikro-orm migration:up",
-    "migration:down": "mikro-orm migration:down",
-    "migration:status": "mikro-orm migration:list",
+    "migration:create": "bun node_modules/@mikro-orm/cli/cli.js migration:create",
+    "migration:up": "bun node_modules/@mikro-orm/cli/cli.js migration:up",
+    "migration:down": "bun node_modules/@mikro-orm/cli/cli.js migration:down",
+    "migration:status": "bun node_modules/@mikro-orm/cli/cli.js migration:list",
     "test": "bun test",
     "test:unit": "bun test test/unit --pass-with-no-tests",
     "test:integration": "bun scripts/run-bun-test-suite.mjs integration",
@@ -33,7 +33,9 @@
     "test:concurrency:wagering": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/wager-processing.concurrency.spec.ts --pass-with-no-tests --parallel=1",
     "test:concurrency:reversals": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/wager-reversals.concurrency.spec.ts --pass-with-no-tests --parallel=1",
     "test:concurrency:reconciliation": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/reconciliation-observability.concurrency.spec.ts --pass-with-no-tests --parallel=1",
-    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
+    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency",
+    "test:distributed": "bun scripts/run-final.ts",
+    "test:final": "bun scripts/run-final.ts --full"
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.1126.0",

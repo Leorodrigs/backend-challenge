@@ -51,12 +51,18 @@ export class OutboxPublisherWorker implements OnModuleInit, OnApplicationShutdow
     this.loopPromise = undefined;
   }
 
+  async beforeApplicationShutdown(): Promise<void> {
+    // Drain while the ORM and AWS clients still exist.
+    await this.onApplicationShutdown();
+  }
+
   async runOnce(now = new Date()): Promise<OutboxPublisherOutcome[]> {
     if (this.running) return [];
     this.running = true;
     try {
       const outcomes: OutboxPublisherOutcome[] = [];
       for (let index = 0; index < this.options.batchSize; index++) {
+        if (this.stopping) break;
         const committed = await this.persistence.transactional(async (context) => {
           const message = await context.outbox.claimNextDue(now);
           if (message === undefined) return undefined;

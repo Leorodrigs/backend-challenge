@@ -1,4 +1,4 @@
-# Idempotência persistente — Etapa 5
+# Idempotência persistente
 
 `README.md` permanece a especificação oficial. Este fluxo processa BET, WIN e
 LOSS e recebe `{ idempotencyKey, payload }`. O ID interno é um `randomUUID()`
@@ -138,11 +138,12 @@ quanto para não terminais. Nenhum saldo é inventado ou reaplicado. Hashes lega
 arbitrários também não são recalculados; divergência segue sendo conflito.
 
 Um registro com snapshot pode ser lido sem exigir transição nem terminalidade;
-isso mantém o contrato extensível a estados pendentes futuros. Esta etapa não
-cria nem reprocessa referências pendentes. Uma eventual reversão da migration
-remove os snapshots, portanto perde a capacidade de replay desses resultados.
+isso mantém o contrato extensível a estados pendentes futuros. A resolução de
+referências pendentes fica a cargo do worker específico. Uma eventual reversão
+da migration remove os snapshots, portanto perde a capacidade de replay desses
+resultados.
 
-## Evidência automatizada
+## Testes
 
 Os testes unitários cobrem canonicalização, hashing e desvios do fluxo antes
 do wallet lock. Os testes PostgreSQL cobrem resultados históricos, rejeições,
@@ -155,6 +156,6 @@ exigem 50 fulfilled, 0 rejected, 1 original, 49 replays, 1 ID retornado, 1
 WagerTransaction da request, 1 DEBIT, saldo 75,00 e versão 2, além de exatamente
 um `wallet FOR UPDATE`. O CREDIT de abertura é somente fixture.
 
-Os testes também cobrem payloads divergentes e provider/external concorrentes,
-preservam os cenários da Etapa 4 e reconstroem o saldo pelo ledger com decimal
-exato. Todos os ORMs descartáveis usam `migrations.snapshot = false`.
+Os testes também cobrem payloads divergentes, provider/external concorrentes e
+reconstroem o saldo pelo ledger com decimal exato. Todos os ORMs descartáveis
+usam `migrations.snapshot = false`.
