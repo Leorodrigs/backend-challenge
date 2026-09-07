@@ -26,11 +26,13 @@
     "test:integration:idempotency": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/integration/wager-idempotency.integration.spec.ts --pass-with-no-tests --parallel=1",
     "test:integration:wagering": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/integration/wager-processing.integration.spec.ts --pass-with-no-tests --parallel=1",
     "test:integration:reversals": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/integration/wager-reversals.integration.spec.ts --pass-with-no-tests --parallel=1",
+    "test:integration:observability": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/integration/reconciliation-observability.integration.spec.ts --pass-with-no-tests --parallel=1",
     "test:concurrency": "bun scripts/run-bun-test-suite.mjs concurrency",
     "test:concurrency:inbox": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/inbox-processing.concurrency.spec.ts --pass-with-no-tests --parallel=1",
     "test:concurrency:outbox": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/outbox-publisher.concurrency.spec.ts --pass-with-no-tests --parallel=1",
     "test:concurrency:wagering": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/wager-processing.concurrency.spec.ts --pass-with-no-tests --parallel=1",
     "test:concurrency:reversals": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/wager-reversals.concurrency.spec.ts --pass-with-no-tests --parallel=1",
+    "test:concurrency:reconciliation": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun --smol test test/concurrency/reconciliation-observability.concurrency.spec.ts --pass-with-no-tests --parallel=1",
     "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
   },
   "dependencies": {

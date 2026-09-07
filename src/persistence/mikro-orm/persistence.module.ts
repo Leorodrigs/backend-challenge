@@ -15,6 +15,10 @@ import { MikroOrmWalletLedgerEntryRepository } from './repositories/mikro-orm-wa
 import { MikroOrmWalletRepository } from './repositories/mikro-orm-wallet.repository.js';
 import { MikroOrmInboxMessageRepository } from './repositories/mikro-orm-inbox-message.repository.js';
 import { MikroOrmOutboxMessageRepository } from './repositories/mikro-orm-outbox-message.repository.js';
+import { WalletReconciliationPersistence } from '../../wallet/reconciliation/wallet-reconciliation.persistence.js';
+import { MikroOrmWalletReconciliationPersistence } from './mikro-orm-wallet-reconciliation.persistence.js';
+import { MetricsStatePersistence } from '../../observability/metrics-state.persistence.js';
+import { MikroOrmMetricsStatePersistence } from './mikro-orm-metrics-state.persistence.js';
 
 @Module({
   imports: [
@@ -31,6 +35,14 @@ import { MikroOrmOutboxMessageRepository } from './repositories/mikro-orm-outbox
       provide: WagerProcessingPersistence,
       useClass: MikroOrmWagerProcessingPersistence,
     },
+    {
+      provide: WalletReconciliationPersistence,
+      useClass: MikroOrmWalletReconciliationPersistence,
+    },
+    {
+      provide: MetricsStatePersistence,
+      useClass: MikroOrmMetricsStatePersistence,
+    },
     MikroOrmWalletRepository,
     MikroOrmWagerTransactionRepository,
     MikroOrmWalletLedgerEntryRepository,
@@ -39,6 +51,8 @@ import { MikroOrmOutboxMessageRepository } from './repositories/mikro-orm-outbox
   ],
   exports: [
     WagerProcessingPersistence,
+    WalletReconciliationPersistence,
+    MetricsStatePersistence,
     MikroOrmWalletRepository,
     MikroOrmWagerTransactionRepository,
     MikroOrmWalletLedgerEntryRepository,

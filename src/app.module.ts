@@ -11,6 +11,7 @@ import { AwsModule } from './messaging/aws/aws.module.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 import { PersistenceModule } from './persistence/mikro-orm/persistence.module.js';
 import { WageringModule } from './wagering/wagering.module.js';
+import { ReconciliationModule } from './wallet/reconciliation/reconciliation.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { WageringModule } from './wagering/wagering.module.js';
     PersistenceModule,
     AwsModule,
     WageringModule,
+    ReconciliationModule,
     HealthModule,
   ],
 })

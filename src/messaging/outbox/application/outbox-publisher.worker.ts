@@ -1,5 +1,6 @@
 import { Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 
+import type { ApplicationMetrics } from '../../../observability/application-metrics.js';
 import type { WagerProcessingPersistence } from '../../../wagering/application/wager-processing.persistence.js';
 import type { IntegrationEventPublisher } from './integration-event.publisher.js';
 
@@ -25,6 +26,7 @@ export class OutboxPublisherWorker implements OnModuleInit, OnApplicationShutdow
     private readonly persistence: WagerProcessingPersistence,
     private readonly publisher: IntegrationEventPublisher,
     private readonly options: Readonly<OutboxPublisherOptions>,
+    private readonly metrics?: ApplicationMetrics,
   ) {
     if (!Number.isSafeInteger(options.batchSize) || options.batchSize < 1 ||
         !Number.isSafeInteger(options.pollIntervalMs) || options.pollIntervalMs < 1 ||
@@ -55,7 +57,7 @@ export class OutboxPublisherWorker implements OnModuleInit, OnApplicationShutdow
     try {
       const outcomes: OutboxPublisherOutcome[] = [];
       for (let index = 0; index < this.options.batchSize; index++) {
-        const outcome = await this.persistence.transactional(async (context) => {
+        const committed = await this.persistence.transactional(async (context) => {
           const message = await context.outbox.claimNextDue(now);
           if (message === undefined) return undefined;
 
@@ -67,32 +69,42 @@ export class OutboxPublisherWorker implements OnModuleInit, OnApplicationShutdow
               maxDelayMs: this.options.retryMaxMs,
             });
             await context.outbox.save(message);
-            this.logger.warn({
-              eventId: message.id,
-              eventType: message.eventType,
-              aggregateId: message.aggregateId,
-              correlationId: message.payload.correlationId,
-              attempts: message.attempts,
-              outcome: 'RETRY_SCHEDULED',
+            return {
+              message,
+              outcome: 'RETRY_SCHEDULED' as const,
               errorName: error instanceof Error ? error.name : 'UnknownError',
-            });
-            return 'RETRY_SCHEDULED' as const;
+            };
           }
 
           message.markPublished(new Date());
           await context.outbox.save(message);
-          this.logger.log({
-            eventId: message.id,
-            eventType: message.eventType,
-            aggregateId: message.aggregateId,
-            correlationId: message.payload.correlationId,
-            attempts: message.attempts,
-            outcome: 'PUBLISHED',
-          });
-          return 'PUBLISHED' as const;
+          return { message, outcome: 'PUBLISHED' as const };
         });
-        if (outcome === undefined) break;
-        outcomes.push(outcome);
+        if (committed === undefined) break;
+        const fields = {
+          eventId: committed.message.id,
+          eventType: committed.message.eventType,
+          aggregateId: committed.message.aggregateId,
+          correlationId: committed.message.payload.correlationId,
+          attempts: committed.message.attempts,
+          outcome: committed.outcome,
+          ...('errorName' in committed
+            ? { errorName: committed.errorName }
+            : {}),
+        };
+        if (committed.outcome === 'RETRY_SCHEDULED') {
+          this.metrics?.recordRetry('outbox');
+        }
+        try {
+          if (committed.outcome === 'RETRY_SCHEDULED') {
+            this.logger.warn(fields);
+          } else {
+            this.logger.log(fields);
+          }
+        } catch {
+          // Logging is best effort and happens only after the SQL transaction.
+        }
+        outcomes.push(committed.outcome);
       }
       return outcomes;
     } finally {

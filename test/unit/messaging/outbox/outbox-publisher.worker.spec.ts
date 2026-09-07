@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
 import type { IntegrationEventPublisher } from '../../../../src/messaging/outbox/application/integration-event.publisher.js';
+import { ApplicationMetrics } from '../../../../src/observability/application-metrics.js';
 import { OutboxPublisherWorker } from '../../../../src/messaging/outbox/application/outbox-publisher.worker.js';
 import { OutboxMessage } from '../../../../src/messaging/outbox/domain/outbox-message.js';
 import type {
@@ -80,11 +81,13 @@ describe('OutboxPublisherWorker', () => {
 
   test('commits retry metadata after an SNS failure and skips the item before due', async () => {
     const pending = message('retry');
+    const metrics = new ApplicationMetrics();
     const publish = mock(async () => { throw new Error('SNS unavailable'); });
     const worker = new OutboxPublisherWorker(
       persistenceFor([pending]),
       { publish } as IntegrationEventPublisher,
       options,
+      metrics,
     );
 
     expect(await worker.runOnce(occurredAt)).toEqual(['RETRY_SCHEDULED']);
@@ -92,6 +95,9 @@ describe('OutboxPublisherWorker', () => {
     expect(pending.publishedAt).toBeUndefined();
     expect(pending.nextAttemptAt?.getTime()).toBe(occurredAt.getTime() + 100);
     expect(await worker.runOnce(new Date(occurredAt.getTime() + 99))).toEqual([]);
+    expect(await metrics.metrics()).toContain(
+      'wager_retries_total{component="outbox"} 1',
+    );
   });
 
   test('suppresses overlapping iterations locally while an in-flight publish finishes', async () => {

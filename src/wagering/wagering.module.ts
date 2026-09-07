@@ -2,6 +2,7 @@ import type { SNSClient } from '@aws-sdk/client-sns';
 import type { SQSClient } from '@aws-sdk/client-sqs';
 import { Module } from '@nestjs/common';
 
+import { ApplicationMetrics } from '../observability/application-metrics.js';
 import {
   applicationConfiguration,
   type ApplicationConfiguration,
@@ -39,19 +40,29 @@ import { PendingReferenceScheduler } from './pending-reference.scheduler.js';
     },
     {
       provide: ProcessWagerTransactionUseCase,
-      inject: [WagerProcessingPersistence, ClaimedWagerTransactionProcessor],
+      inject: [
+        WagerProcessingPersistence,
+        ClaimedWagerTransactionProcessor,
+        ApplicationMetrics,
+      ],
       useFactory: (
         persistence: WagerProcessingPersistence,
         processor: ClaimedWagerTransactionProcessor,
-      ) => new ProcessWagerTransactionUseCase(persistence, processor),
+        metrics: ApplicationMetrics,
+      ) => new ProcessWagerTransactionUseCase(persistence, processor, metrics),
     },
     {
       provide: PendingReferenceWorker,
-      inject: [WagerProcessingPersistence, ClaimedWagerTransactionProcessor],
+      inject: [
+        WagerProcessingPersistence,
+        ClaimedWagerTransactionProcessor,
+        ApplicationMetrics,
+      ],
       useFactory: (
         persistence: WagerProcessingPersistence,
         processor: ClaimedWagerTransactionProcessor,
-      ) => new PendingReferenceWorker(persistence, processor),
+        metrics: ApplicationMetrics,
+      ) => new PendingReferenceWorker(persistence, processor, metrics),
     },
     MessageFailureClassifier,
     {
@@ -61,12 +72,14 @@ import { PendingReferenceScheduler } from './pending-reference.scheduler.js';
         ProcessWagerTransactionUseCase,
         applicationConfiguration.KEY,
         MessageFailureClassifier,
+        ApplicationMetrics,
       ],
       useFactory: (
         persistence: WagerProcessingPersistence,
         useCase: ProcessWagerTransactionUseCase,
         configuration: ApplicationConfiguration,
         classifier: MessageFailureClassifier,
+        metrics: ApplicationMetrics,
       ) =>
         new ProcessWagerSqsMessageUseCase(
           persistence,
@@ -74,6 +87,7 @@ import { PendingReferenceScheduler } from './pending-reference.scheduler.js';
           configuration.aws.sqsConsumerName,
           undefined,
           classifier,
+          metrics,
         ),
     },
     {
@@ -83,18 +97,21 @@ import { PendingReferenceScheduler } from './pending-reference.scheduler.js';
         ProcessWagerSqsMessageUseCase,
         MessageFailureClassifier,
         applicationConfiguration.KEY,
+        ApplicationMetrics,
       ],
       useFactory: (
         sqsClient: SQSClient,
         useCase: ProcessWagerSqsMessageUseCase,
         classifier: MessageFailureClassifier,
         configuration: ApplicationConfiguration,
+        metrics: ApplicationMetrics,
       ) =>
         new WagerTransactionSqsConsumer(
           sqsClient,
           useCase,
           classifier,
           configuration,
+          metrics,
         ),
     },
     PendingReferenceScheduler,
@@ -115,18 +132,20 @@ import { PendingReferenceScheduler } from './pending-reference.scheduler.js';
         WagerProcessingPersistence,
         IntegrationEventPublisher,
         applicationConfiguration.KEY,
+        ApplicationMetrics,
       ],
       useFactory: (
         persistence: WagerProcessingPersistence,
         publisher: IntegrationEventPublisher,
         configuration: ApplicationConfiguration,
+        metrics: ApplicationMetrics,
       ) => new OutboxPublisherWorker(persistence, publisher, {
         enabled: configuration.workers.outboxPublisherEnabled,
         batchSize: configuration.workers.outboxBatchSize,
         pollIntervalMs: configuration.workers.outboxPollIntervalMs,
         retryBaseMs: configuration.workers.outboxRetryBaseMs,
         retryMaxMs: configuration.workers.outboxRetryMaxMs,
-      }),
+      }, metrics),
     },
   ],
   exports: [

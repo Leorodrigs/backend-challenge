@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 
+import type {
+  ApplicationMetrics,
+  ProcessingOutcome,
+} from '../../observability/application-metrics.js';
 import type { Money } from '../../shared/domain/value-objects/money.js';
 import { FailureCode } from '../domain/failure-code.js';
 import { WagerTransaction } from '../domain/wager-transaction.js';
@@ -41,14 +46,53 @@ export class ProcessWagerTransactionUseCase {
   constructor(
     private readonly persistence: WagerProcessingPersistence,
     private readonly processor = new ClaimedWagerTransactionProcessor(),
+    private readonly metrics?: ApplicationMetrics,
+    private readonly logger: Pick<Logger, 'log'> = new Logger(
+      ProcessWagerTransactionUseCase.name,
+    ),
   ) {}
 
   async execute(
     input: ProcessWagerTransactionInput,
   ): Promise<ProcessWagerTransactionResult> {
-    return this.persistence.transactional((context) =>
-      this.executeInContext(context, input),
-    );
+    const startedAt = performance.now();
+    try {
+      const result = await this.persistence.transactional((context) =>
+        this.executeInContext(context, input),
+      );
+      const outcome = this.metricOutcome(result);
+      if (result.idempotentReplay) {
+        this.metrics?.recordDuplicate('business');
+      }
+      this.metrics?.recordProcessingDuration(
+        'direct',
+        outcome,
+        (performance.now() - startedAt) / 1_000,
+      );
+      try {
+        this.logger.log({
+          correlationId: result.transactionId,
+          transactionId: result.transactionId,
+          walletId: input.payload.walletId,
+          providerId: input.payload.providerId,
+          kind: input.payload.kind,
+          status: result.status,
+          failureCode: result.failureCode,
+          idempotentReplay: result.idempotentReplay,
+          outcome,
+        });
+      } catch {
+        // A logger failure after commit must not turn a confirmed result into failure.
+      }
+      return result;
+    } catch (error: unknown) {
+      this.metrics?.recordProcessingDuration(
+        'direct',
+        'error',
+        (performance.now() - startedAt) / 1_000,
+      );
+      throw error;
+    }
   }
 
   async executeInContext(
@@ -122,5 +166,17 @@ export class ProcessWagerTransactionUseCase {
       throw new WagerClaimConflictError();
     }
     return this.processor.process(context, transaction);
+  }
+
+  private metricOutcome(
+    result: ProcessWagerTransactionResult,
+  ): ProcessingOutcome {
+    if (result.idempotentReplay) return 'replay';
+    if (result.status === WagerTransactionStatus.Processed) return 'processed';
+    if (result.status === WagerTransactionStatus.Rejected) return 'rejected';
+    if (result.status === WagerTransactionStatus.PendingReference) {
+      return 'pending_reference';
+    }
+    return 'error';
   }
 }

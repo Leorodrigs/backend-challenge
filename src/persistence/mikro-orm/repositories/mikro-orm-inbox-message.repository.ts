@@ -1,12 +1,17 @@
-import { LockMode } from '@mikro-orm/core';
+import { EntityManager as EntityManagerToken, LockMode } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
+import { Inject, Injectable } from '@nestjs/common';
 
 import type { InboxMessage } from '../../../messaging/inbox/domain/inbox-message.js';
 import { InboxMessageEntity } from '../entities/inbox-message.entity.js';
 import { InboxMessageMapper } from '../mappers/inbox-message.mapper.js';
 
+@Injectable()
 export class MikroOrmInboxMessageRepository {
-  constructor(private readonly entityManager: EntityManager) {}
+  constructor(
+    @Inject(EntityManagerToken)
+    private readonly entityManager: EntityManager,
+  ) {}
 
   async tryReceive(message: InboxMessage): Promise<boolean> {
     this.assertTransaction();
