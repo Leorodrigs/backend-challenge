@@ -55,6 +55,23 @@ const options = {
 };
 
 describe('OutboxPublisherWorker', () => {
+  test('shutdown drains the active publish while leaving the next row for another process', async () => {
+    const gate = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const messages = [message('active'), message('next')];
+    const publish = mock(async () => { started.resolve(); await gate.promise; });
+    const worker = new OutboxPublisherWorker(persistenceFor(messages), { publish }, { ...options, enabled: true });
+    worker.onModuleInit();
+    await started.promise;
+    let drained = false;
+    const shutdown = worker.beforeApplicationShutdown().then(() => { drained = true; });
+    await Promise.resolve(); expect(drained).toBe(false);
+    gate.resolve(); await shutdown;
+    expect(messages[0]?.isPending()).toBe(false);
+    expect(messages[1]?.isPending()).toBe(true);
+    expect(publish).toHaveBeenCalledTimes(1);
+    await worker.onApplicationShutdown();
+  });
   test('publishes each due item in its own transaction and marks it published', async () => {
     const messages = [message('a'), message('b')];
     let transactions = 0;

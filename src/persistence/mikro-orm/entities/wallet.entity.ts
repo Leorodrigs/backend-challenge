@@ -1,4 +1,3 @@
-import { DecimalType } from '@mikro-orm/core';
 import {
   Check,
   Entity,
@@ -6,8 +5,10 @@ import {
   Property,
   Unique,
 } from '@mikro-orm/decorators/legacy';
+import { ExactDecimalType } from '../types/exact-decimal.type.js';
 
 @Entity({ tableName: 'wallets' })
+@Check({ name: 'wallets_finite_money_check', expression: "balance_amount <> 'NaN'::numeric" })
 @Check({
   name: 'wallets_id_not_blank_check',
   expression: 'length(id) > 0 and btrim(id) = id',
@@ -44,7 +45,7 @@ export class WalletEntity {
 
   @Property({
     fieldName: 'balance_amount',
-    type: new DecimalType('string'),
+    type: new ExactDecimalType(),
     columnType: 'numeric(20,2)',
   })
   balanceAmount!: string;

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FinancialApiModule } from './api/financial-api.module.js';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -28,6 +29,7 @@ import { ReconciliationModule } from './wallet/reconciliation/reconciliation.mod
     AwsModule,
     WageringModule,
     ReconciliationModule,
+    FinancialApiModule,
     HealthModule,
   ],
 })

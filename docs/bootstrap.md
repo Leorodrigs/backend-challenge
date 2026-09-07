@@ -1,7 +1,7 @@
 # Bootstrap local
 
-O `README.md` da raiz permanece a especificação oficial. Este arquivo documenta
-somente a execução da infraestrutura criada na Etapa 1.
+Este arquivo documenta a execução local. Consulte também `README.md`,
+`ARCHITECTURE.md` e `docs/TESTING.md`.
 
 ## Pré-requisitos
 
@@ -14,7 +14,7 @@ somente a execução da infraestrutura criada na Etapa 1.
 2. Execute `bun install`.
 3. Suba PostgreSQL e LocalStack com
    `docker compose up -d postgres localstack`.
-4. Consulte migrations com `bun run migration:status`.
+4. Aplique `bun run migration:up` e consulte `bun run migration:status`.
 5. Inicie a aplicação com `bun run start:dev`.
 
 `GET /health/live` verifica apenas que o processo responde. `GET /health/ready`
@@ -23,7 +23,8 @@ executa uma consulta real no PostgreSQL e lê atributos da fila SQS principal.
 ## Ambiente completo em containers
 
 Execute `docker compose up --build`. O serviço da aplicação aguarda os
-healthchecks de PostgreSQL e LocalStack antes de iniciar.
+healthchecks de PostgreSQL/LocalStack e a conclusão do serviço one-shot de
+migrations antes de iniciar.
 
 O hook de inicialização do LocalStack cria, de forma idempotente:
 
@@ -33,20 +34,20 @@ O hook de inicialização do LocalStack cria, de forma idempotente:
 - a fila standard `wager-integration-events-audit`, sua policy e a inscrição no
   tópico com raw message delivery.
 
-A migration da Etapa 3 cria `wallets`, `wager_transactions` e
+As migrations criam `wallets`, `wager_transactions` e
 `wallet_ledger_entries`, incluindo as constraints financeiras e a proteção de
-imutabilidade do ledger. Execute-a com `bun run migration:up` e consulte seu
+imutabilidade do ledger. Execute-as com `bun run migration:up` e consulte o
 estado com `bun run migration:status`.
 
-A migration da Etapa 7 acrescenta `inbox_messages`. O consumer real de
+A Inbox persistente é armazenada em `inbox_messages`. O consumer real de
 `wager-transactions.fifo` inicia junto com o NestJS quando
 `SQS_CONSUMER_ENABLED=true`. As configurações de polling, batch, retry, limite
 de recebimentos e grace period estão documentadas em `.env.example`; a
 semântica completa está em `docs/sqs-processing.md`.
 
-A migration da Etapa 8 acrescenta `outbox_messages`, seus checks de estado e o
-índice parcial de mensagens pendentes. O `OutboxPublisherWorker` inicia junto
-com o NestJS quando `OUTBOX_PUBLISHER_ENABLED=true`, reclama uma row por
+A Outbox persistente é armazenada em `outbox_messages`, com checks de estado e
+um índice parcial para mensagens pendentes. O `OutboxPublisherWorker` inicia
+junto com o NestJS quando `OUTBOX_PUBLISHER_ENABLED=true`, reclama uma row por
 transação com `FOR UPDATE SKIP LOCKED` e publica no tópico configurado por
 `INTEGRATION_EVENTS_TOPIC_ARN`. `OUTBOX_BATCH_SIZE` e
 `OUTBOX_POLL_INTERVAL_MS` controlam o loop; `OUTBOX_RETRY_BASE_MS` e

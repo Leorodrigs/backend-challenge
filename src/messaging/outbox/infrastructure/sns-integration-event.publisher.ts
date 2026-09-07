@@ -35,6 +35,6 @@ export class SnsIntegrationEventPublisher implements IntegrationEventPublisher {
               },
             }),
       },
-    }));
+    }), { abortSignal: AbortSignal.timeout(5000) });
   }
 }

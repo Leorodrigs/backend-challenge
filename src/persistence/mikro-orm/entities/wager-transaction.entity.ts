@@ -1,4 +1,4 @@
-import { DecimalType, DeferMode } from '@mikro-orm/core';
+import { DeferMode } from '@mikro-orm/core';
 import {
   Check,
   Entity,
@@ -13,8 +13,10 @@ import { FailureCode } from '../../../wagering/domain/failure-code.js';
 import { WagerTransactionKind } from '../../../wagering/domain/wager-transaction-kind.js';
 import { WagerTransactionStatus } from '../../../wagering/domain/wager-transaction-status.js';
 import { WalletEntity } from './wallet.entity.js';
+import { ExactDecimalType } from '../types/exact-decimal.type.js';
 
 @Entity({ tableName: 'wager_transactions' })
+@Check({ name: 'wager_transactions_finite_money_check', expression: "amount <> 'NaN'::numeric" })
 @Check({
   name: 'wager_transactions_reference_attempt_count_check',
   expression: 'reference_attempt_count >= 0',
@@ -176,7 +178,7 @@ export class WagerTransactionEntity {
   kind!: WagerTransactionKind;
 
   @Property({
-    type: new DecimalType('string'),
+    type: new ExactDecimalType(),
     columnType: 'numeric(20,2)',
   })
   amount!: string;
@@ -223,7 +225,7 @@ export class WagerTransactionEntity {
   })
   processedAt!: Date | null;
 
-  @Property({ fieldName: 'result_balance_amount', type: new DecimalType('string'), columnType: 'numeric(20,2)', nullable: true })
+  @Property({ fieldName: 'result_balance_amount', type: new ExactDecimalType(), columnType: 'numeric(20,2)', nullable: true })
   resultBalanceAmount: string | null = null;
 
   @Property({ fieldName: 'result_balance_currency', type: 'string', columnType: 'varchar(3)', nullable: true })

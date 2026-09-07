@@ -744,3 +744,96 @@ wallet.balance == saldo reconstruído pelo ledger
 ### Diferenciais opcionais
 
 Teste de carga também conta como diferencial. Se fizer, exponha como `bun run test:load` e registre ambiente, metodologia, throughput, p50/p95/p99, taxa de erro, conflitos de concorrência e outbox lag. Não há meta de RPS — a qualidade do experimento e a honestidade da análise pesam mais que o número bruto.
+
+---
+
+## Como executar
+
+As decisões de arquitetura e limitações estão em
+[ARCHITECTURE.md](ARCHITECTURE.md). Os comandos e cenários de teste estão em
+[docs/TESTING.md](docs/TESTING.md).
+
+### Setup local
+
+Use Bun 1.4.0 e Docker Compose v2. As imagens fixam PostgreSQL 18.6 e LocalStack
+4.14.0. Na primeira execução, copie `.env.example` para `.env` sem sobrescrever
+uma configuração existente. Todos os valores desse exemplo são credenciais
+locais de desenvolvimento.
+
+```sh
+bun install --frozen-lockfile
+docker compose up -d --build
+```
+
+O serviço `migrate` aplica as sete migrations antes de iniciar a aplicação.
+PostgreSQL e LocalStack devem estar saudáveis; o bootstrap cria a fila FIFO,
+DLQ, tópico SNS e fila de auditoria com subscription raw. A aplicação responde
+em `http://localhost:3000`, PostgreSQL em 5432 e LocalStack em 4566.
+
+Para executar a aplicação no host, suba somente `postgres localstack`, rode
+`bun run migration:up`, `bun run build` e `bun run start`. Use
+`bun run migration:status` para consultar o histórico. Variáveis obrigatórias de
+banco, filas e tópico, além dos limites de retry, ficam em `.env.example`.
+`SQS_CONSUMER_ENABLED` e `OUTBOX_PUBLISHER_ENABLED` controlam o início dos workers;
+o scheduler de referências pendentes acompanha a aplicação.
+
+### Exercitar a API e a fila
+
+```sh
+bun scripts/smoke-api.ts http://localhost:3000
+```
+
+O script cria wallet de 100.00 BRL, envia BET de 25.00, repete a mesma chave,
+consulta wallet/ledger/transação por ambos os identificadores, envia LOSS via SQS
+e verifica reconciliação, health e metrics. Imprime os IDs gerados e o resultado.
+Ele usa as variáveis AWS/filas do ambiente e preserva os eventos na auditoria.
+
+O contrato de abertura é:
+
+```json
+{"playerId":"player-123","initialBalance":{"amount":"100.00","currency":"BRL"}}
+```
+
+Envie esse JSON a `POST /wallets`. Com o `id` retornado, envie ao
+`POST /wagering/transactions` o header `Idempotency-Key: bet-player-123-1` e:
+
+```json
+{
+  "providerId":"provider-1",
+  "externalTransactionId":"external-bet-1",
+  "playerId":"player-123",
+  "walletId":"ID_RETORNADO_PELA_ABERTURA",
+  "roundId":"round-1",
+  "gameId":"game-1",
+  "kind":"BET",
+  "money":{"amount":"25.00","currency":"BRL"}
+}
+```
+
+Money exige strings com exatamente duas casas. OPENING é interno. A chave fica
+no header HTTP; em SQS ela pertence a `data.idempotencyKey`. O envelope SQS contém
+`messageId`, `type: WagerTransactionRequested`, `occurredAt` ISO e `data` com os
+campos acima. Repetir uma operação retorna o snapshot original. Veja os dez
+[endpoints e seus códigos HTTP](docs/TESTING.md#contratos-http).
+
+Para observar eventos publicados no SNS:
+
+```sh
+docker compose exec localstack awslocal sqs receive-message --queue-url http://localhost:4566/queue/us-east-1/000000000000/wager-integration-events-audit --max-number-of-messages 10 --wait-time-seconds 2
+```
+
+### Testes
+
+```sh
+bun run test:unit
+bunx --bun tsc --noEmit --incremental false
+bun run test:distributed
+bun run test:final
+```
+
+Os dois últimos comandos criam um projeto Docker isolado, com portas dinâmicas,
+três aplicações, PostgreSQL e LocalStack próprios. Containers, rede e volumes de
+teste são removidos ao final, inclusive quando ocorre uma falha. `test:final`
+inclui build sem cache, migrations, todas as suítes e smoke da API. No Windows
+sem Docker no PATH, o runner usa o Docker do WSL. Consulte
+[docs/TESTING.md](docs/TESTING.md) para os cenários cobertos.

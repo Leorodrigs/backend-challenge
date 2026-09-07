@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 
 const suites = {
   integration: [
+    'test/integration/wallet-opening.integration.spec.ts',
     'test/integration/financial-persistence.integration.spec.ts',
     'test/integration/infrastructure.integration.spec.ts',
     'test/integration/outbox-processing.integration.spec.ts',
@@ -33,9 +34,13 @@ const maximumNativeAttempts = 3;
 
 for (const file of files) {
   for (let attempt = 1; attempt <= maximumNativeAttempts; attempt += 1) {
+    // Some Bun 1.4.0 Windows crashes are specific to the constrained --smol
+    // heap. Only a native crash retries with the normal Bun heap; assertions
+    // (exit 1) still fail immediately and are never retried.
+    const memoryArguments = attempt === 1 ? ['--smol'] : [];
     const result = spawnSync(
       bunExecutable,
-      ['--smol', 'test', file, '--pass-with-no-tests', '--parallel=1'],
+      [...memoryArguments, 'test', file, '--pass-with-no-tests', '--parallel=1'],
       {
         cwd: process.cwd(),
         env: { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' },

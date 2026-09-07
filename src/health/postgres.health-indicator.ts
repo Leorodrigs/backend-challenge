@@ -16,10 +16,10 @@ export class PostgresHealthIndicator {
     try {
       await this.orm.em.getConnection().execute('select 1');
       return indicator.up();
-    } catch (error: unknown) {
+    } catch {
       return indicator.down({
         message:
-          error instanceof Error ? error.message : 'PostgreSQL check failed',
+          'PostgreSQL check failed',
       });
     }
   }

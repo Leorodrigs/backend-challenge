@@ -27,11 +27,12 @@ export class SqsHealthIndicator {
           QueueUrl: this.configuration.aws.wagerQueueUrl,
           AttributeNames: ['QueueArn'],
         }),
+        { abortSignal: AbortSignal.timeout(2000) },
       );
       return indicator.up();
-    } catch (error: unknown) {
+    } catch {
       return indicator.down({
-        message: error instanceof Error ? error.message : 'SQS check failed',
+        message: 'SQS check failed',
       });
     }
   }
